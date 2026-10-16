@@ -100,8 +100,10 @@ export function NotificationsView(): React.JSX.Element {
     void s.refreshFilters()
     void s.refreshLog()
     void s.refreshStatus()
-    markSeen()
-  }, [markSeen])
+  }, [])
+
+  // Whatever arrives while the log is on screen has been seen.
+  useEffect(() => markSeen(), [log, markSeen])
 
   const filterName = (id: number | null): string =>
     id === null ? '既定' : (filters.find((f) => f.id === id)?.name ?? `#${id} (削除済み)`)

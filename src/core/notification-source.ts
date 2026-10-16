@@ -5,6 +5,19 @@ import type { NotificationLogRepository } from './notification-log'
 import type { SettingsRepository } from './settings'
 import type { TaskRepository } from './tasks'
 
+const TITLE_MAX = 120
+
+/**
+ * A notification's summary is often just the channel or sender; the body's
+ * first line is what the task is about. Both go in the title, trimmed.
+ */
+export function taskTitle(n: DesktopNotification): string {
+  const summary = n.title.trim()
+  const firstLine = n.body.trim().split('\n')[0].trim()
+  const title = summary && firstLine ? `${summary}: ${firstLine}` : summary || firstLine
+  return title.length > TITLE_MAX ? title.slice(0, TITLE_MAX - 1) + '…' : title
+}
+
 /** When no rule matches: ignore, so the box doesn't fill with every mail and calendar ping. */
 export const DEFAULT_ACTION: FilterAction = 'ignore'
 
@@ -33,7 +46,7 @@ export class NotificationSource {
     if (action === 'accept') {
       const task = this.tasks.add({
         source: 'notification',
-        title: n.title.trim() || n.body.trim().split('\n')[0].slice(0, 120),
+        title: taskTitle(n),
         body: n.body,
         sourceApp: n.app || null,
         workdir: filter?.workdir ?? null

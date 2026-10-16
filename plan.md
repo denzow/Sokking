@@ -43,12 +43,15 @@ petaterm から持ち込む資産は、縦タブのサイドバー、ターミ�
 
 petaterm には無い要素は次の三つである。
 
-- **DB**：better-sqlite3 で SQLite をメインプロセスから扱う。
+- **DB**：Node.js 組み込みの `node:sqlite` で SQLite をメインプロセスから扱う。
   alir の iceql（CSV + YAML）は人間が読める利点があるが、通知の受信と定期ジョブが同時に書き込むため、トランザクションを持つ SQLite を選ぶ。
+  Electron 43 の Node 24 と開発環境の Node 22 の両方で `node:sqlite` が使えるため、better-sqlite3 のようなネイティブモジュールを Electron 向けに再ビルドする手間を避けられる。
 - **コア**：タスク、取り込み元、ルール、ジョブ、スケジューラを Electron に依存しないモジュールとして `src/core` に置く。
   メインプロセスはコアを起動して IPC で UI に露出するだけにする。
   Electron に依存しないのは、テストを Electron なしで走らせるためと、将来デーモンに切り出す余地を残すためである。
-- **外部連携**：デスクトップ通知の監視は dbus-next で D-Bus のセッションバスに接続して行い、GitHub は `gh` CLI の呼び出し、cron 式の解釈は croner を使う。
+- **外部連携**：デスクトップ通知の監視は `busctl monitor --json=short` をサブプロセスとして起動し、その JSON 出力を読んで行う。
+  busctl は systemd の一部で Ubuntu のデスクトップに必ずあり、D-Bus のライブラリを持ち込まずに済む。
+  GitHub は `gh` CLI の呼び出し、cron 式の解釈は croner を使う。
   Slack の API 連携を足す場合は `@slack/socket-mode` と `@slack/web-api` を使う。
 
 petaterm のリポジトリは fork せず、必要なソースをコピーして独立させる。

@@ -9,7 +9,7 @@ import {
 } from '../../src/core/notification-filters'
 import { NotificationLogRepository } from '../../src/core/notification-log'
 import { Deduplicator, parseBusLine } from '../../src/core/notification-monitor'
-import { NotificationSource } from '../../src/core/notification-source'
+import { NotificationSource, taskTitle } from '../../src/core/notification-source'
 import { SETTING_NOTIFICATION_DEFAULT_ACTION } from '../../src/shared/notifications'
 
 const NOTIFY_LINE =
@@ -112,11 +112,23 @@ describe('NotificationSource', () => {
     source.handle({ app: 'Slack', title: '', body: '', receivedAt: 'now' })
     const created = tasks.list()
     expect(created).toHaveLength(1)
-    expect(created[0]).toMatchObject({ source: 'notification', sourceApp: 'Slack', title: '#dev', workdir: '/w' })
+    expect(created[0]).toMatchObject({
+      source: 'notification',
+      sourceApp: 'Slack',
+      title: '#dev: fix the build',
+      workdir: '/w'
+    })
     const entries = log.list()
     expect(entries).toHaveLength(2)
     expect(entries[0]).toMatchObject({ app: 'Thunderbird', result: 'ignored', taskId: null })
     expect(entries[1]).toMatchObject({ app: 'Slack', result: 'accepted', taskId: created[0].id })
+  })
+
+  it('titles a task from the summary and the first body line', () => {
+    expect(taskTitle({ app: '', title: '#dev', body: 'line one\nline two', receivedAt: '' })).toBe('#dev: line one')
+    expect(taskTitle({ app: '', title: '', body: 'only body', receivedAt: '' })).toBe('only body')
+    expect(taskTitle({ app: '', title: 'only summary', body: '  ', receivedAt: '' })).toBe('only summary')
+    expect(taskTitle({ app: '', title: 't', body: 'x'.repeat(200), receivedAt: '' })).toHaveLength(120)
   })
 
   it('honours the default-action setting', () => {
