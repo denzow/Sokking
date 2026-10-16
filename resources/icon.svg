@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- window body -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="#1e1e2e"/>
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="#313244" stroke-width="12"/>
+  <!-- vertical tab sidebar (sokking's signature) -->
+  <path d="M112 16 v480" stroke="#313244" stroke-width="10"/>
+  <rect x="44" y="86" width="40" height="40" rx="10" fill="#45475a"/>
+  <rect x="44" y="166" width="40" height="40" rx="10" fill="#89b4fa"/>
+  <rect x="44" y="246" width="40" height="40" rx="10" fill="#45475a"/>
+  <!-- prompt chevron -->
+  <path d="M176 160 L292 262 L176 364" fill="none" stroke="#a6e3a1" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- cursor block -->
+  <rect x="316" y="322" width="120" height="42" rx="10" fill="#89b4fa"/>
+</svg>

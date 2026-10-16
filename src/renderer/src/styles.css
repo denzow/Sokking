@@ -1,0 +1,2183 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* The app chrome speaks the terminal's language: the terminal's monospace
+   font, square corners, planes separated by background value instead of
+   boxes-with-borders, and the accent color reserved for two meanings only —
+   "this is where the focus is" and "Claude Code lives here". */
+
+:root {
+  --bg: #1e1e2e;
+  --bg-alt: #181825;
+  --bg-hover: #313244;
+  --border: #45475a;
+  --text: #cdd6f4;
+  --text-dim: #7f849c;
+  --accent: #89b4fa;
+  --red: #f38ba8;
+  --green: #a6e3a1;
+  --yellow: #f9e2af;
+  --font-mono: monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+.app {
+  display: flex;
+  height: 100%;
+}
+
+/* ---------- sidebar ---------- */
+
+.sidebar {
+  /* Width is user-resizable: driven by an inline style, persisted by Sidebar. */
+  width: 230px;
+  flex-shrink: 0;
+  position: relative;
+  background: var(--bg-alt);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  /* The workspace collapse (→ rail) slides instead of snapping. */
+  transition: width 0.18s ease;
+}
+
+/* Dragging the resizer must track the cursor 1:1, not rubber-band. */
+.sidebar.resizing {
+  transition: none;
+}
+
+/* Rail mode while the workspace panel is showing: fixed narrow width, each
+   tab is its status marker + the label's first character, footer buttons are
+   icon-only. The resizer is not rendered in this mode. */
+.sidebar.collapsed {
+  width: 46px;
+}
+
+.sidebar.collapsed .tab-item {
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 2px;
+  /* Same height as an expanded row (title + cwd lines, measured 47px) so
+     the rows don't jump vertically while the rail toggles. */
+  min-height: 47px;
+}
+
+.sidebar.collapsed .tab-initial {
+  font-size: 13px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tab-item.attention .tab-initial {
+  color: var(--yellow);
+}
+
+.sidebar.collapsed .sidebar-button {
+  text-align: center;
+  padding: 6px 0;
+}
+
+/* Compact unread marker replacing the (N) badge in rail mode. */
+.unread-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--yellow);
+  vertical-align: super;
+}
+
+/* Invisible grab strip straddling the sidebar's right border. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.sidebar-resizer:hover {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+.sidebar-tabs {
+  flex: 1;
+  overflow-y: auto;
+  /* No sideways spill while the rail width animates. */
+  overflow-x: hidden;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 8px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tab-item:hover {
+  background: var(--bg-hover);
+}
+
+.tab-item.active {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+
+/* Marker column: each tab reads like a prompt line. A plain shell shows the
+   caret (lit accent on the active tab); a Claude Code session replaces it
+   with a status lamp. */
+.tab-marker {
+  width: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.tab-item.active .tab-marker {
+  color: var(--accent);
+}
+
+.tab-marker.running::before,
+.tab-marker.permission::before,
+.tab-marker.idle::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+}
+
+.tab-marker.running::before {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  animation: lamp-pulse 2s ease-in-out infinite;
+}
+
+.tab-marker.permission::before {
+  background: var(--yellow);
+  box-shadow: 0 0 6px var(--yellow);
+  /* A permission request always waits on the user — keep it moving. */
+  animation: lamp-pulse 1.2s ease-in-out infinite;
+}
+
+.tab-marker.idle::before {
+  background: var(--text-dim);
+}
+
+/* The session started waiting (permission / input) while the tab wasn't
+   being looked at: the whole row turns yellow — the "wants attention"
+   color — until the tab is viewed. */
+.tab-item.attention {
+  border-left-color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 16%, transparent);
+}
+
+.tab-item.attention .tab-title {
+  color: var(--yellow);
+}
+
+.tab-item.attention .tab-marker.idle::before {
+  background: var(--yellow);
+  box-shadow: 0 0 6px var(--yellow);
+  animation: lamp-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes lamp-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-marker.running::before,
+  .tab-marker.permission::before,
+  .tab-item.attention .tab-marker.idle::before {
+    animation: none;
+  }
+}
+
+.tab-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-cwd {
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Foreground command running in the tab, next to the title. */
+.tab-process {
+  margin-left: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.tab-process::before {
+  content: '⏵ ';
+}
+
+.tab-close {
+  visibility: hidden;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+}
+
+.tab-item:hover .tab-close {
+  visibility: visible;
+}
+
+/* Per-tab bookmark star: hidden until hover like the close button, but a
+   bookmarked tab keeps its lit star visible at all times. */
+.tab-bookmark {
+  visibility: hidden;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.tab-item:hover .tab-bookmark {
+  visibility: visible;
+}
+
+.tab-bookmark:hover,
+.tab-bookmark.active {
+  color: var(--yellow);
+}
+
+.tab-bookmark.active {
+  visibility: visible;
+}
+
+.tab-close:hover {
+  color: var(--red);
+}
+
+.tab-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  padding: 2px 4px;
+}
+
+/* Bookmarked directories: a palette-style modal with incremental search;
+   picking an entry spawns a new session tab in that directory. */
+.bookmarks-modal {
+  align-self: flex-start;
+  margin-top: 12vh;
+}
+
+.bookmarks-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bookmarks-search-icon {
+  color: var(--yellow);
+  font-size: 13px;
+}
+
+.bookmarks-search-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font-mono);
+}
+
+.bookmarks-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.bookmarks-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 10px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bookmark-item:hover,
+.bookmark-item.selected {
+  background: var(--bg-hover);
+}
+
+.bookmark-item.selected {
+  border-left-color: var(--accent);
+}
+
+.bookmarks-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 14px 12px;
+}
+
+.bookmark-marker {
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+  color: var(--yellow);
+  font-size: 11px;
+}
+
+.bookmark-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bookmark-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.bookmark-path {
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-remove {
+  visibility: hidden;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+}
+
+.bookmark-item:hover .bookmark-remove,
+.bookmark-item.selected .bookmark-remove {
+  visibility: visible;
+}
+
+.bookmark-remove:hover {
+  color: var(--red);
+}
+
+/* ---------- tab search palette (Shift twice) ---------- */
+
+.tab-search-modal {
+  align-self: flex-start;
+  margin-top: 12vh;
+}
+
+.tab-search-current {
+  margin-left: 6px;
+  color: var(--accent);
+  font-size: 10px;
+}
+
+/* Notification tabs (attention) are sorted to the top; mark them yellow like
+   the sidebar row so the reordering reads at a glance. The selected-row
+   highlight still wins its own background. */
+.tab-search-item.attention {
+  box-shadow: inset 3px 0 0 var(--yellow);
+}
+
+.tab-search-item.attention .bookmark-name {
+  color: var(--yellow);
+}
+
+.tab-search-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tab-search-meta .bookmark-path {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.tab-search-process {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.sidebar-footer {
+  padding: 4px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+  /* Labels never wrap mid-animation of the rail width. */
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar-button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.sidebar-button.active {
+  color: var(--accent);
+}
+
+/* ---------- main / terminals ---------- */
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- top view tabs (terminal / diff / log / files) ---------- */
+
+.view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Bracket selector: every label reserves its [ ] so nothing shifts; only the
+   active panel's brackets light up. */
+.view-tab {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 7px 4px;
+  cursor: pointer;
+}
+
+.view-tab::before {
+  content: '[ ';
+}
+
+.view-tab::after {
+  content: ' ]';
+}
+
+.view-tab::before,
+.view-tab::after {
+  color: transparent;
+}
+
+.view-tab:hover {
+  color: var(--text);
+}
+
+.view-tab.active {
+  color: var(--text);
+}
+
+.view-tab.active::before,
+.view-tab.active::after {
+  color: var(--accent);
+}
+
+.view-tab-icon {
+  color: var(--text-dim);
+}
+
+.view-tabs-branch {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 6px 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.view-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+
+.terminals {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.terminal-container {
+  position: absolute;
+  inset: 0;
+  padding: 4px;
+}
+
+/* Search bar floating over the top-right of the active terminal. */
+.terminal-search {
+  position: absolute;
+  top: 6px;
+  right: 18px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+
+.terminal-search-input {
+  width: 200px;
+  padding: 3px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.terminal-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.terminal-search-count {
+  min-width: 60px;
+  text-align: right;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.terminal-search-toggle {
+  padding: 2px 5px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.terminal-search-toggle:hover {
+  color: var(--text);
+}
+
+.terminal-search-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- files panel ---------- */
+
+.files-area {
+  flex: 1;
+  overflow: auto;
+}
+
+.files-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+
+.files-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.files-item:hover {
+  background: var(--bg-hover);
+}
+
+.files-filter {
+  width: 110px;
+  flex-shrink: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  padding: 2px 6px;
+}
+
+.files-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Keyboard cursor row; the panel itself keeps no visible focus ring. */
+.files-area:focus {
+  outline: none;
+}
+
+.files-item.focused {
+  background: var(--bg-hover);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.files-caret {
+  flex-shrink: 0;
+  width: 10px;
+  color: var(--text-dim);
+  font-size: 10px;
+  text-align: center;
+  user-select: none;
+}
+
+.files-note {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.files-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.files-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Directories keep the ls-colors convention: dirs are the colored entries. */
+.files-item.dir .files-name {
+  color: var(--accent);
+}
+
+.files-size,
+.files-mtime {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.files-size {
+  width: 70px;
+  text-align: right;
+}
+
+.files-mtime {
+  width: 110px;
+}
+
+/* ---------- notifications modal ---------- */
+
+/* Unread-count badge on the sidebar's 通知 button; yellow = "wants
+   attention", matching the permission lamp. */
+.unread-badge {
+  margin-left: 5px;
+  color: var(--yellow);
+}
+
+.notifications-modal {
+  width: 560px;
+}
+
+.notif-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notif-empty {
+  padding: 24px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.notif-clear {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.notif-clear:hover:not(:disabled) {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.notif-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notif-list {
+  max-height: 56vh;
+  overflow-y: auto;
+}
+
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  cursor: pointer;
+}
+
+.notif-item:hover {
+  background: var(--bg-hover);
+}
+
+.notif-item.gone {
+  cursor: default;
+}
+
+/* Same lamp language as the sidebar's tab status markers. */
+.notif-lamp {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.notif-item.kind-permission .notif-lamp {
+  background: var(--yellow);
+  box-shadow: 0 0 6px var(--yellow);
+}
+
+.notif-item.kind-idle .notif-lamp {
+  background: var(--text-dim);
+}
+
+.notif-item.kind-stop .notif-lamp {
+  background: var(--green);
+}
+
+.notif-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.notif-source {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.notif-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.notif-message {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.notif-remove {
+  visibility: hidden;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+}
+
+.notif-item:hover .notif-remove {
+  visibility: visible;
+}
+
+.notif-remove:hover {
+  color: var(--red);
+}
+
+/* ---------- git panel ---------- */
+
+.git-panel {
+  flex: 1;
+  min-width: 0;
+  /* In the workspace side pane the panel is a column-flex item whose main
+     axis is height — without this, a tall file tree (min-height:auto) blows
+     the pane past the viewport instead of scrolling inside .files-area. */
+  min-height: 0;
+  background: var(--bg-alt);
+  display: flex;
+  flex-direction: column;
+}
+
+.git-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-panel-title {
+  font-weight: 600;
+}
+
+.git-panel-cwd {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+}
+
+.icon-button:hover {
+  color: var(--accent);
+}
+
+.git-panel-empty {
+  padding: 20px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.git-branch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 0;
+}
+
+.git-branch-row label {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.git-branch-row select,
+.git-branch-row input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 6px;
+}
+
+.git-branch-row button {
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.git-branch-row button:hover {
+  border-color: var(--text-dim);
+}
+
+.git-error {
+  margin: 8px 10px 0;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border-left: 2px solid var(--red);
+  color: var(--red);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.git-diff-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* Changed-file list beside the diff; clicking jumps, scrolling follows.
+   Its width is set inline (drag-resizable, persisted in localStorage). */
+.diff-file-list {
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 4px 0;
+}
+
+/* Negative margins let the 6px grab area straddle the list's 1px border. */
+.diff-file-list-resizer {
+  flex: 0 0 6px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.diff-file-list-resizer:hover {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+/* Folder-tree rows in the changed-file list. Indent is set inline per depth. */
+.diff-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.diff-tree-row:hover {
+  background: var(--bg-hover);
+}
+
+.diff-tree-row.file.active {
+  background: var(--bg-hover);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.diff-tree-caret {
+  flex-shrink: 0;
+  width: 10px;
+  color: var(--text-dim);
+  font-size: 9px;
+  text-align: center;
+}
+
+.diff-tree-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.diff-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-tree-row.dir .diff-tree-name {
+  color: var(--text);
+}
+
+/* Files carry their git status color on the name (added/deleted/modified). */
+.diff-tree-row.file.diff-status-added .diff-tree-name {
+  color: var(--green);
+}
+
+.diff-tree-row.file.diff-status-deleted .diff-tree-name {
+  color: var(--red);
+}
+
+.diff-tree-row.file.diff-status-modified .diff-tree-name,
+.diff-tree-row.file.diff-status-renamed .diff-tree-name {
+  color: var(--accent);
+}
+
+.diff-file-list-counts {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.diff-file-list-counts .add {
+  color: var(--green);
+}
+
+.diff-file-list-counts .del {
+  color: var(--red);
+}
+
+.diff-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* ---------- remote box (pull / push) ---------- */
+
+.git-remote-box {
+  margin: 8px 10px 0;
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+
+.git-remote-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.git-remote-upstream {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-remote-counts {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  color: var(--text);
+}
+
+.git-remote-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.git-remote-actions button {
+  flex: 1;
+  padding: 5px 0;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.git-remote-actions button:hover:not(:disabled) {
+  border-color: var(--text-dim);
+}
+
+.git-remote-actions button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+/* ---------- commit box ---------- */
+
+.git-commit-box {
+  margin: 8px 10px 0;
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+
+.git-commit-box:focus-within {
+  border-color: var(--text-dim);
+}
+
+.git-commit-box textarea {
+  width: 100%;
+  min-height: 52px;
+  background: var(--bg-alt);
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+  resize: vertical;
+}
+
+.git-commit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.git-commit-hint {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.git-commit-actions button.primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.git-commit-actions button.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---------- git log ---------- */
+
+.git-log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.git-log-toolbar button {
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.git-log-toolbar button:hover:not(:disabled) {
+  border-color: var(--text-dim);
+}
+
+.git-log-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.git-log-toolbar button.danger {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.git-log-confirm {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.git-log-area {
+  flex: 1;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+}
+
+.git-log-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-log-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+
+.git-log-item.head {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.git-log-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-log-hash {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.git-log-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-log-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--green);
+  border: 1px solid var(--green);
+  padding: 0 4px;
+}
+
+.git-log-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.git-log-revert {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.git-log-revert:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+/* ---------- diff viewer ---------- */
+
+.diff-viewer {
+  font-size: 12px;
+}
+
+.diff-file {
+  margin-bottom: 12px;
+}
+
+.diff-file-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-hover);
+  position: sticky;
+  top: 0;
+}
+
+/* Jump from a file's diff straight into the workspace editor. */
+.diff-file-open {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.diff-file-open:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.diff-status {
+  font-weight: 700;
+  width: 14px;
+  text-align: center;
+}
+
+.diff-status-added {
+  color: var(--green);
+}
+
+.diff-status-deleted {
+  color: var(--red);
+}
+
+.diff-status-modified,
+.diff-status-renamed {
+  color: var(--accent);
+}
+
+.diff-file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-hunk-header {
+  padding: 3px 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.diff-line {
+  display: flex;
+  cursor: pointer;
+  line-height: 1.5;
+  border-left: 2px solid transparent;
+}
+
+.diff-line:hover {
+  filter: brightness(1.35);
+}
+
+.diff-line-add {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+}
+
+.diff-line-del {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+}
+
+.diff-line-selected {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.diff-line-num {
+  width: 36px;
+  min-width: 36px;
+  text-align: right;
+  padding-right: 6px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.diff-line-text {
+  white-space: pre;
+  flex: 1;
+}
+
+.diff-comment-box {
+  margin: 6px 10px;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  padding: 8px;
+}
+
+.diff-comment-box textarea {
+  width: 100%;
+  min-height: 64px;
+  background: var(--bg);
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+  resize: vertical;
+}
+
+.diff-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.diff-comment-actions button {
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.diff-comment-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.diff-comment-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* A written-but-unsent comment, pinned under its lines like a GitHub
+   pending review comment. */
+.diff-pending-comment {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--bg);
+  padding: 6px 8px;
+}
+
+.diff-pending-comment-text {
+  flex: 1;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-submit-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-alt);
+  border-top: 1px solid var(--border);
+}
+
+.diff-submit-count {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.diff-submit-bar button {
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.diff-submit-bar button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+/* ---------- settings modal ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  width: 460px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 8px 14px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.keybind-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+
+.keybind-row:last-child {
+  border-bottom: none;
+}
+
+.keybind-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.keybind-combo {
+  min-width: 150px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.keybind-combo:hover {
+  border-color: var(--text-dim);
+}
+
+.keybind-combo.capturing {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.keybind-combo.conflict {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.keybind-reset {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px 4px;
+}
+
+.keybind-reset:hover {
+  color: var(--accent);
+}
+
+.modal-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.modal-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ---------- settings: two-pane layout ---------- */
+
+.settings-modal {
+  width: 640px;
+}
+
+.settings-body {
+  display: flex;
+  min-height: 340px;
+  max-height: 66vh;
+}
+
+.settings-nav {
+  width: 150px;
+  min-width: 150px;
+  border-right: 1px solid var(--border);
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-nav-item {
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--text-dim);
+  text-align: left;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.settings-nav-item.active {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+
+.keybind-group-title {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.keybind-group-title:first-child {
+  margin-top: 0;
+}
+
+.settings-hint {
+  margin-top: 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ---------- appearance settings ---------- */
+
+.setting-group {
+  margin-bottom: 18px;
+}
+
+.setting-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.setting-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+}
+
+.setting-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ---------- file opener settings ---------- */
+
+.file-opener-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.file-opener-ext {
+  width: 110px;
+  min-width: 0;
+}
+
+.file-opener-ext.conflict {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.file-opener-app {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-combobox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.app-combobox-button {
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-combobox-button.placeholder {
+  color: var(--text-dim);
+}
+
+.app-combobox-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.app-combobox-item {
+  padding: 5px 8px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-combobox-item.selected {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.app-combobox-empty {
+  padding: 5px 8px;
+  color: var(--text-dim);
+}
+
+/* The footer button style works here, but keep it from stretching. */
+.file-opener-settings .sidebar-button {
+  width: auto;
+  margin-top: 4px;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  padding: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.theme-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.theme-swatches {
+  display: flex;
+  gap: 5px;
+}
+
+.theme-swatches span {
+  width: 16px;
+  height: 16px;
+}
+
+.theme-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.font-size-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.font-size-row input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.font-size-input {
+  width: 64px;
+}
+
+.font-size-unit {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ---------- workspace panel (tree + editor + search) ---------- */
+
+.workspace-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  background: var(--bg);
+}
+
+/* Side pane: the file tree or the directory search. Width is user-resizable
+   via the divider (inline style). */
+.workspace-side {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-alt);
+  border-right: 1px solid var(--border);
+}
+
+.workspace-side-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Invisible grab strip straddling the side pane's right border. */
+.workspace-side-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.workspace-side-resizer:hover {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+/* The tree is a narrow explorer here — the size/mtime columns don't fit. */
+.workspace-side .files-size,
+.workspace-side .files-mtime {
+  display: none;
+}
+
+.workspace-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ---------- workspace search pane ---------- */
+
+.workspace-search {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-search-header {
+  padding: 8px 10px;
+}
+
+.workspace-search-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.workspace-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.workspace-search-results {
+  flex: 1;
+  overflow: auto;
+  font-size: 12px;
+  padding-bottom: 6px;
+}
+
+.search-section {
+  padding: 8px 10px 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.search-note {
+  padding: 8px 10px;
+  color: var(--text-dim);
+}
+
+.search-file-row,
+.search-match-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.search-file-row:hover,
+.search-match-file:hover {
+  background: var(--bg-hover);
+}
+
+.search-match-file {
+  margin-top: 3px;
+  color: var(--accent);
+}
+
+.search-file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* long paths keep their basename visible */
+  text-align: left;
+}
+
+.search-match-row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 10px 2px 20px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.search-match-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Keyboard selection (↑/↓ from the query input). */
+.search-file-row.selected,
+.search-match-row.selected {
+  background: var(--bg-hover);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.search-match-line {
+  flex-shrink: 0;
+  min-width: 34px;
+  text-align: right;
+  color: var(--text-dim);
+}
+
+.search-match-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.search-hit {
+  color: var(--yellow);
+}
+
+/* ---------- editor panel (Monaco) ---------- */
+
+.editor-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* File tabs live in a strip above the workspace's editor (one per open
+   file), scrolling in their own container. */
+.workspace-editor-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 8px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.editor-view-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.editor-tab-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.editor-tab-close {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.editor-hint {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.editor-tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.editor-tab-close.dirty {
+  color: var(--yellow);
+}
+
+.editor-save {
+  margin: 0 8px;
+  padding: 3px 10px;
+  font-size: 12px;
+  background: var(--bg-hover);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editor-save:disabled {
+  color: var(--text-dim);
+  background: none;
+  cursor: default;
+}
+
+.editor-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--red);
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-message button {
+  padding: 2px 8px;
+  font-size: 12px;
+  background: var(--bg-hover);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
