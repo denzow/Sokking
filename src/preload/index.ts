@@ -21,6 +21,8 @@ import {
   NotifFilterResult,
   NotificationStatus,
   OkResult,
+  RuleCheckResult,
+  RuleResult,
   RepoSetResult,
   RunStartResult,
   TaskRemoveResult,
@@ -34,6 +36,7 @@ import {
   NotificationFilterInput,
   NotificationLogEntry
 } from '../shared/notifications'
+import { AutoRunRequest, Rule, RuleInput } from '../shared/rules'
 
 function subscribe<T>(channel: string, callback: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T): void => callback(payload)
@@ -156,7 +159,18 @@ const api = {
   notifStatus: (): Promise<NotificationStatus> => ipcRenderer.invoke(IPC.NotifStatus),
   settingGet: (key: string): Promise<string | null> => ipcRenderer.invoke(IPC.SettingGet, key),
   settingSet: (key: string, value: string): Promise<OkResult> =>
-    ipcRenderer.invoke(IPC.SettingSet, key, value)
+    ipcRenderer.invoke(IPC.SettingSet, key, value),
+
+  ruleList: (): Promise<Rule[]> => ipcRenderer.invoke(IPC.RuleList),
+  ruleAdd: (input: RuleInput): Promise<RuleResult> => ipcRenderer.invoke(IPC.RuleAdd, input),
+  ruleUpdate: (id: number, input: RuleInput): Promise<RuleResult> =>
+    ipcRenderer.invoke(IPC.RuleUpdate, id, input),
+  ruleRemove: (id: number): Promise<OkResult> => ipcRenderer.invoke(IPC.RuleRemove, id),
+  ruleCheck: (id: number): Promise<RuleCheckResult> => ipcRenderer.invoke(IPC.RuleCheck, id),
+  onRuleChanged: (cb: () => void): (() => void) => subscribe<void>(IPC.RuleChanged, cb),
+  /** Auto-processing: main wants a tab opened and a run launched for a task. */
+  onAutoRunRequest: (cb: (req: AutoRunRequest) => void): (() => void) =>
+    subscribe<AutoRunRequest>(IPC.AutoRunRequest, cb)
 }
 
 export type SokkingApi = typeof api

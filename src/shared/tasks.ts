@@ -25,6 +25,10 @@ export interface Task {
   status: TaskStatus
   /** Directory the task is (to be) processed in; null until chosen. */
   workdir: string | null
+  /** The GitHub rule that imported it; null otherwise. */
+  ruleId: number | null
+  /** Waiting for the dispatcher to open its processing tab (a rule with auto). */
+  autoPending: boolean
   /** ISO 8601 timestamps. */
   createdAt: string
   updatedAt: string
@@ -37,6 +41,8 @@ export interface NewTask {
   sourceApp?: string | null
   sourceRef?: string | null
   workdir?: string | null
+  ruleId?: number | null
+  autoPending?: boolean
 }
 
 export interface TaskPatch {
@@ -44,6 +50,7 @@ export interface TaskPatch {
   body?: string
   status?: TaskStatus
   workdir?: string | null
+  autoPending?: boolean
 }
 
 export interface TaskFilter {

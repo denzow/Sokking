@@ -82,6 +82,28 @@ const MIGRATIONS: string[] = [
     task_id           INTEGER
   );
   CREATE INDEX notification_log_received ON notification_log(received_at);
+  `,
+  `
+  CREATE TABLE rule (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    name             TEXT NOT NULL,
+    workdir          TEXT NOT NULL,
+    query            TEXT NOT NULL,
+    interval_seconds INTEGER NOT NULL DEFAULT 300,
+    auto             INTEGER NOT NULL DEFAULT 0,
+    permission_mode  TEXT NOT NULL DEFAULT 'acceptEdits',
+    delivery         TEXT NOT NULL DEFAULT 'pr',
+    push_branch      TEXT,
+    prompt_template  TEXT,
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    last_checked_at  TEXT,
+    last_error       TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+  );
+  ALTER TABLE task ADD COLUMN rule_id INTEGER REFERENCES rule(id) ON DELETE SET NULL;
+  ALTER TABLE task ADD COLUMN auto_pending INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX task_auto_pending ON task(auto_pending) WHERE auto_pending = 1;
   `
 ]
 

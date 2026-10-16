@@ -29,6 +29,7 @@ import { useTasksStore } from './stores/tasks'
 import { useRunsStore } from './stores/runs'
 import { TaskBox } from './components/TaskBox'
 import { NotificationsView } from './components/NotificationsView'
+import { RulesView } from './components/RulesView'
 import { useIntakeStore } from './stores/notification-intake'
 import { TaskPanel } from './components/TaskPanel'
 import { StartRunModal } from './components/StartRunModal'
@@ -46,7 +47,7 @@ type MainPanel = 'terminal' | 'task' | 'git' | 'workspace' | 'diff' | 'log'
 
 /** What the main area shows: the active session tab's panels, the task box,
     or the notification intake. */
-type MainView = 'tabs' | 'taskbox' | 'notifications'
+type MainView = 'tabs' | 'taskbox' | 'notifications' | 'rules'
 
 /** Main-area panels in left-to-right order for Ctrl+←/→ switching; the task
     panel exists only on a processing tab, the Git panels only when the
@@ -197,6 +198,19 @@ export default function App(): React.JSX.Element {
     const unsubNotifFilters = window.sokking.onNotifFilterChanged(() => {
       void useIntakeStore.getState().refreshFilters()
     })
+    // Auto-processing: main prepared everything; the tab (and its pty) can
+    // only be made here. The new tab doesn't steal the view — the person
+    // may be in the middle of something else.
+    const unsubAutoRun = window.sokking.onAutoRunRequest(({ taskId, title, options }) => {
+      const tabsStore = useTabsStore.getState()
+      const activeBefore = tabsStore.activeTabId
+      const existing = tabsStore.tabs.find((t) => t.taskId === taskId)
+      const tabId = existing ? existing.id : tabsStore.addTab(options.workdir, { title, taskId })
+      if (!existing && activeBefore) useTabsStore.getState().activateTab(activeBefore)
+      void window.sokking.runStart(taskId, tabId, options).then((result) => {
+        if (!result.ok) console.warn('自動処理を開始できません:', result.error)
+      })
+    })
     // Files-panel context menu 「エディタで開く」. The helper reads in the
     // renderer (not main) so binaries still fall back to the external app
     // (configured opener or OS default).
@@ -240,6 +254,7 @@ export default function App(): React.JSX.Element {
       unsubRuns()
       unsubNotifLog()
       unsubNotifFilters()
+      unsubAutoRun()
       unsubOpenInEditor()
       unsubPersist()
       window.removeEventListener('focus', onFocus)
@@ -482,6 +497,7 @@ export default function App(): React.JSX.Element {
         view={view}
         onShowTaskBox={() => setView('taskbox')}
         onShowNotifications={() => setView('notifications')}
+        onShowRules={() => setView('rules')}
         onTabSelected={() => setView('tabs')}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenBookmarks={() => setBookmarksOpen(true)}
@@ -584,6 +600,7 @@ export default function App(): React.JSX.Element {
           </div>
           {view === 'taskbox' && <TaskBox onOpenInTab={openTaskInTab} />}
           {view === 'notifications' && <NotificationsView />}
+          {view === 'rules' && <RulesView />}
           {view === 'tabs' && panel === 'task' && activeTab && (
             <TaskPanel key={activeTab.id} tab={activeTab} onRelaunch={setRunModalTask} />
           )}

@@ -3006,3 +3006,86 @@ textarea {
   color: var(--text-dim);
   font-size: 11px;
 }
+
+/* ---------- rules ---------- */
+
+.rules-parallel {
+  width: 48px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.rules-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.rule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+
+.rule-row.disabled {
+  opacity: 0.55;
+}
+
+.rule-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rule-row-name {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rule-row-name:hover {
+  color: var(--accent);
+}
+
+.rule-row-head .start-run-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rule-row-head .icon-button.danger {
+  color: var(--red);
+  font-size: 12px;
+}
+
+.rule-row-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.rule-row-detail code {
+  color: var(--text);
+}
+
+.rule-row-dir {
+  color: var(--accent);
+}
+
+.rule-row-status {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.rule-row-error {
+  color: var(--red);
+}
+
+.rule-row-message {
+  color: var(--green);
+}

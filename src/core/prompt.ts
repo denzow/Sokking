@@ -1,19 +1,38 @@
 import type { Task } from '../shared/tasks'
 import type { Delivery } from '../shared/runs'
 
+export interface PromptOptions {
+  delivery: Delivery
+  pushBranch: string | null
+  /**
+   * A rule's own template. Placeholders: {title} {body} {sourceRef}
+   * {delivery} (the delivery instruction). Null = the built-in text.
+   */
+  template?: string | null
+}
+
 /**
  * The initial prompt handed to Claude Code for a task. Plain text the user
  * can edit in the launch dialog before it goes out.
  */
-export function buildPrompt(
-  task: Task,
-  options: { delivery: Delivery; pushBranch: string | null }
-): string {
+export function buildPrompt(task: Task, options: PromptOptions): string {
+  if (options.template?.trim()) return renderTemplate(options.template, task, options)
   const lines: string[] = ['次のタスクを処理してください。', '', `# ${task.title}`]
   if (task.body.trim()) lines.push('', task.body.trim())
   if (task.sourceRef) lines.push('', `参照: ${task.sourceRef}`)
   lines.push('', deliveryInstruction(options))
   return lines.join('\n') + '\n'
+}
+
+export function renderTemplate(template: string, task: Task, options: PromptOptions): string {
+  const values: Record<string, string> = {
+    title: task.title,
+    body: task.body.trim(),
+    sourceRef: task.sourceRef ?? '',
+    delivery: deliveryInstruction(options)
+  }
+  const text = template.replace(/\{(title|body|sourceRef|delivery)\}/g, (_, key: string) => values[key])
+  return text.endsWith('\n') ? text : text + '\n'
 }
 
 function deliveryInstruction(options: { delivery: Delivery; pushBranch: string | null }): string {

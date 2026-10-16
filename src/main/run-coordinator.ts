@@ -34,7 +34,7 @@ export class RunCoordinator {
     if (previous) this.runs.finish(previous.id, 'done')
 
     const run = this.runs.start(taskId, tabId, options)
-    this.tasks.update(taskId, { status: 'running', workdir: options.workdir })
+    this.tasks.update(taskId, { status: 'running', workdir: options.workdir, autoPending: false })
 
     fs.mkdirSync(this.promptDir, { recursive: true })
     const promptFile = path.join(this.promptDir, `run-${run.id}.md`)

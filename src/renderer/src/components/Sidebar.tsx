@@ -9,9 +9,10 @@ import { closeTab } from '../tab-actions'
 
 interface SidebarProps {
   /** Which main view is showing — highlights the matching nav entry. */
-  view: 'tabs' | 'taskbox' | 'notifications'
+  view: 'tabs' | 'taskbox' | 'notifications' | 'rules'
   onShowTaskBox: () => void
   onShowNotifications: () => void
+  onShowRules: () => void
   /** A session tab was clicked: the main area should show the tabs view. */
   onTabSelected: () => void
   onOpenSettings: () => void
@@ -36,6 +37,7 @@ export function Sidebar({
   view,
   onShowTaskBox,
   onShowNotifications,
+  onShowRules,
   onTabSelected,
   onOpenSettings,
   onOpenBookmarks,
@@ -121,6 +123,14 @@ export function Sidebar({
             ) : (
               <span className="sidebar-nav-badge dim">{unseenNotifs}</span>
             ))}
+        </button>
+        <button
+          className={`sidebar-nav-item${view === 'rules' ? ' active' : ''}`}
+          onClick={onShowRules}
+          title="ルール: GitHub の Issue を定期的に取り込む条件"
+        >
+          <span className="sidebar-nav-icon">⚙</span>
+          {!collapsed && <span className="sidebar-nav-label">ルール</span>}
         </button>
       </div>
       <div className="sidebar-tabs">

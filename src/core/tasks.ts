@@ -18,6 +18,8 @@ interface TaskRow {
   source_ref: string | null
   status: string
   workdir: string | null
+  rule_id: number | null
+  auto_pending: number
   created_at: string
   updated_at: string
 }
@@ -80,8 +82,8 @@ export class TaskRepository {
     const now = new Date().toISOString()
     const result = this.db
       .prepare(
-        `INSERT INTO task (source, title, body, source_app, source_ref, status, workdir, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'inbox', ?, ?, ?)`
+        `INSERT INTO task (source, title, body, source_app, source_ref, status, workdir, rule_id, auto_pending, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'inbox', ?, ?, ?, ?, ?)`
       )
       .run(
         source,
@@ -90,6 +92,8 @@ export class TaskRepository {
         input.sourceApp ?? null,
         input.sourceRef ?? null,
         emptyToNull(input.workdir),
+        input.ruleId ?? null,
+        input.autoPending ? 1 : 0,
         now,
         now
       )
@@ -109,13 +113,14 @@ export class TaskRepository {
     if (!title) throw new TaskError('タイトルは必須です')
     this.db
       .prepare(
-        `UPDATE task SET title = ?, body = ?, status = ?, workdir = ?, updated_at = ? WHERE id = ?`
+        `UPDATE task SET title = ?, body = ?, status = ?, workdir = ?, auto_pending = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         title,
         patch.body ?? current.body,
         patch.status ?? current.status,
         patch.workdir === undefined ? current.workdir : emptyToNull(patch.workdir),
+        (patch.autoPending ?? current.autoPending) ? 1 : 0,
         new Date().toISOString(),
         id
       )
@@ -131,6 +136,14 @@ export class TaskRepository {
     const result = this.db.prepare('DELETE FROM task WHERE id = ?').run(id)
     if (result.changes === 0) throw new TaskError(`タスク #${id} がありません`)
     this.notify()
+  }
+
+  /** Tasks a rule marked for automatic processing that haven't started yet. */
+  listAutoPending(): Task[] {
+    const rows = this.db
+      .prepare("SELECT * FROM task WHERE auto_pending = 1 AND status = 'inbox' ORDER BY id")
+      .all() as unknown as TaskRow[]
+    return rows.map(toTask)
   }
 
   countByStatus(): Record<TaskStatus, number> {
@@ -162,6 +175,8 @@ function toTask(row: TaskRow): Task {
     sourceRef: row.source_ref,
     status: row.status as TaskStatus,
     workdir: row.workdir,
+    ruleId: row.rule_id,
+    autoPending: row.auto_pending === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }

@@ -39,6 +39,11 @@ import { NotificationLogRepository } from '../core/notification-log'
 import { NotificationMonitor } from '../core/notification-monitor'
 import { NotificationSource } from '../core/notification-source'
 import { RunCoordinator } from './run-coordinator'
+import { AutoDispatcher } from './auto-dispatcher'
+import { RuleError, RuleRepository } from '../core/rules'
+import { RuleRunner } from '../core/rule-runner'
+import { fetchIssues } from '../core/github'
+import type { RuleInput } from '../shared/rules'
 import { NewTask, TaskFilter, TaskPatch, TaskStatus, TASK_STATUSES } from '../shared/tasks'
 import { Delivery, RepoDefaults, RunOptions } from '../shared/runs'
 import {
@@ -111,6 +116,16 @@ const notifMonitor = new NotificationMonitor(
 notifFilters.onChange(() => mainWindow?.webContents.send(IPC.NotifFilterChanged))
 notifLog.onChange(() => mainWindow?.webContents.send(IPC.NotifLogChanged))
 
+// GitHub rules: periodic issue searches, and the dispatcher that opens tabs
+// for the tasks a rule wants processed automatically.
+const rules = new RuleRepository(db)
+const ruleRunner = new RuleRunner(rules, tasks, fetchIssues, (m) => console.log('[sokking] rules:', m))
+const autoDispatcher = new AutoDispatcher(tasks, runs, rules, settings, () => mainWindow, (m) =>
+  console.warn('[sokking] auto:', m)
+)
+rules.onChange(() => mainWindow?.webContents.send(IPC.RuleChanged))
+const RULE_TICK_MS = 15_000
+
 /** The log is pruned on start and daily; the cap keeps the view snappy. */
 const NOTIF_LOG_KEEP = { keepDays: 14, keepCount: 2000 }
 
@@ -136,7 +151,7 @@ function notificationStatus(): NotificationStatus {
 
 /** Turns a domain error into a renderer-facing failure; anything else propagates. */
 function domainErrorMessage(e: unknown): string {
-  if (e instanceof FilterError) return e.message
+  if (e instanceof FilterError || e instanceof RuleError) return e.message
   return taskErrorMessage(e)
 }
 
@@ -312,6 +327,8 @@ function registerIpcHandlers(): void {
         return { ok: true, run: await runCoordinator.start(taskId, tabId, options) }
       } catch (e) {
         return { ok: false, error: taskErrorMessage(e) }
+      } finally {
+        autoDispatcher.settle(taskId)
       }
     }
   )
@@ -366,6 +383,40 @@ function registerIpcHandlers(): void {
     return { ok: true }
   })
   ipcMain.handle(IPC.NotifStatus, () => notificationStatus())
+
+  // GitHub rules.
+  ipcMain.handle(IPC.RuleList, () => rules.list())
+  ipcMain.handle(IPC.RuleAdd, (_e, input: RuleInput) => {
+    try {
+      return { ok: true, rule: rules.add(input) }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.RuleUpdate, (_e, id: number, input: RuleInput) => {
+    try {
+      return { ok: true, rule: rules.update(id, input) }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.RuleRemove, (_e, id: number) => {
+    try {
+      rules.remove(id)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.RuleCheck, async (_e, id: number) => {
+    const rule = rules.get(id)
+    if (!rule) return { ok: false, error: `ルール #${id} がありません` }
+    const outcome = await ruleRunner.check(rule)
+    if (outcome.error) return { ok: false, error: outcome.error }
+    // Auto tasks shouldn't wait for the next dispatcher tick after a manual check.
+    void autoDispatcher.tick()
+    return { ok: true, found: outcome.found, imported: outcome.imported.length }
+  })
   ipcMain.handle(IPC.SettingGet, (_e, key: string) => settings.get(key))
   ipcMain.handle(IPC.SettingSet, (_e, key: string, value: string) => {
     settings.set(key, value)
@@ -620,6 +671,8 @@ app.whenReady().then(() => {
   notifLog.prune(NOTIF_LOG_KEEP)
   setInterval(() => notifLog.prune(NOTIF_LOG_KEEP), 24 * 3600_000)
   syncNotificationMonitor()
+  setInterval(() => void ruleRunner.tick(), RULE_TICK_MS)
+  autoDispatcher.start()
   cleanupStaleHookSockets(app.getPath('userData'))
   hookServer.start()
   cwdTracker.start()
@@ -656,5 +709,6 @@ app.on('before-quit', () => {
   hookServer.stop()
   controlServer.stop()
   notifMonitor.stop()
+  autoDispatcher.stop()
   db.close()
 })

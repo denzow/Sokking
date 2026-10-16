@@ -3,6 +3,7 @@
 import type { Task } from './tasks'
 import type { RepoDefaults, Run } from './runs'
 import type { FilterAction, NotificationFilter } from './notifications'
+import type { Rule } from './rules'
 
 export const IPC = {
   PtyCreate: 'pty:create',
@@ -67,8 +68,23 @@ export const IPC = {
   NotifLogChanged: 'notif-log:changed',
   NotifStatus: 'notif:status',
   SettingGet: 'setting:get',
-  SettingSet: 'setting:set'
+  SettingSet: 'setting:set',
+  RuleList: 'rule:list',
+  RuleAdd: 'rule:add',
+  RuleUpdate: 'rule:update',
+  RuleRemove: 'rule:remove',
+  /** Check a rule now, regardless of its interval. */
+  RuleCheck: 'rule:check',
+  /** main → renderer: rules changed (edited, or a check updated their status). */
+  RuleChanged: 'rule:changed',
+  /** main → renderer: open a tab for the task and launch the run (auto-processing). */
+  AutoRunRequest: 'auto:run-request'
 } as const
+
+export type RuleResult = { ok: true; rule: Rule } | { ok: false; error: string }
+export type RuleCheckResult =
+  | { ok: true; found: number; imported: number }
+  | { ok: false; error: string }
 
 export type NotifFilterResult =
   | { ok: true; filter: NotificationFilter }
