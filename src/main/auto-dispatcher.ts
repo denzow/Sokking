@@ -6,6 +6,7 @@ import type { RunRepository } from '../core/runs'
 import type { SettingsRepository } from '../core/settings'
 import type { TaskRepository } from '../core/tasks'
 import { prepareIssueWorktree } from '../core/worktree'
+import { ensureFolderTrusted } from '../core/claude-config'
 import { IPC } from '../shared/ipc'
 import { AutoRunRequest, DEFAULT_MAX_PARALLEL_RUNS, SETTING_MAX_PARALLEL_RUNS } from '../shared/rules'
 import type { RunOptions } from '../shared/runs'
@@ -101,6 +102,12 @@ export class AutoDispatcher {
         this.tasks.update(task.id, { autoPending: false })
         return null
       }
+    }
+    // Nobody is there to answer Claude Code's first-run trust prompt.
+    try {
+      ensureFolderTrusted(workdir)
+    } catch (e) {
+      this.log(`信頼設定を書けません (${workdir}): ${e instanceof Error ? e.message : e}`)
     }
     const options: RunOptions = {
       workdir,
