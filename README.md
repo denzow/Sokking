@@ -42,18 +42,31 @@ npm run dev
 | `npm run install-desktop` | デスクトップエントリとアイコンをインストール |
 | `npm run install-autostart` | ログイン時の自動起動を設定 |
 
-## CLI
+- **定期ジョブ**：cron 式で shell コマンドを実行して出力を履歴に残す。Claude Code へのプロンプトをジョブにすると、実行時にタスクとして積まれ自動処理される。
+- **常駐**：ウィンドウを閉じてもトレイに残り、通知の監視、ルールの巡回、ジョブは動き続ける。終了はトレイの「終了」から。
+- **レート制限**：タブの出力に Claude のレート制限を検知すると、自動処理の新規起動を 1 分から倍々で最長 1 時間止める。
+
+## CLI と HTTP
 
 起動中のアプリに対して `bin/sokking.js` からタスクを積める。
 
 ```bash
 bin/sokking.js add "ログイン画面の崩れを直す" --workdir ~/work/app --body -  < memo.txt
 bin/sokking.js list --status inbox
+bin/sokking.js show         # トレイに隠れたウィンドウを前面に出す
 bin/sokking.js ping --dev   # npm run dev のインスタンスに接続する
 ```
 
 接続先はアプリの設定ディレクトリ(`~/.config/sokking/control.sock`、開発時は `sokking-dev`)の Unix ソケット。
 `SOKKING_CONTROL_SOCKET` で上書きできる。
+
+同じ操作を 127.0.0.1 の HTTP でも受け付ける(既定 8713 番、設定画面の「連携」で変更、0 で無効)。
+
+```bash
+curl -X POST http://127.0.0.1:8713/tasks -H 'content-type: application/json' \
+  -d '{"title": "CI が落ちている", "body": "main の test が赤い", "workdir": "/home/me/work/app"}'
+curl 'http://127.0.0.1:8713/tasks?status=inbox'
+```
 
 ## 自動処理と Claude Code の信頼設定
 
