@@ -40,6 +40,14 @@ export class PtyManager {
     // on install, wrecking node_modules of whatever repo the tab is in.
     delete env.NODE_ENV
     delete env.NODE_ENV_ELECTRON_VITE
+    // When sokking itself was launched from inside a Claude Code session
+    // (a dev run from a terminal), that session's markers would make the
+    // Claude Code in the tab behave as a nested child (no transcript, etc.).
+    for (const key of Object.keys(env)) {
+      if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE_') || key === 'CLAUDE_PID' || key === 'CLAUDE_EFFORT') {
+        delete env[key]
+      }
+    }
     const proc = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols: 80,
