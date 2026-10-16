@@ -3089,3 +3089,85 @@ textarea {
 .rule-row-message {
   color: var(--green);
 }
+
+/* ---------- jobs ---------- */
+
+.rule-row.selected {
+  background: var(--bg-alt);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.exec-command {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.exec-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  cursor: pointer;
+}
+
+.exec-row:hover {
+  background: var(--bg-hover);
+}
+
+.exec-row.selected {
+  background: var(--bg);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.exec-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-result.exec-success,
+.notif-result.exec-queued {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.notif-result.exec-failed,
+.notif-result.exec-timeout {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.notif-result.exec-running {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.exec-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px 12px;
+}
+
+.exec-stream-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.exec-stream {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}

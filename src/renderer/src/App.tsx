@@ -30,6 +30,8 @@ import { useRunsStore } from './stores/runs'
 import { TaskBox } from './components/TaskBox'
 import { NotificationsView } from './components/NotificationsView'
 import { RulesView } from './components/RulesView'
+import { JobsView } from './components/JobsView'
+import { useJobsStore } from './stores/jobs'
 import { useIntakeStore } from './stores/notification-intake'
 import { TaskPanel } from './components/TaskPanel'
 import { StartRunModal } from './components/StartRunModal'
@@ -47,7 +49,7 @@ type MainPanel = 'terminal' | 'task' | 'git' | 'workspace' | 'diff' | 'log'
 
 /** What the main area shows: the active session tab's panels, the task box,
     or the notification intake. */
-type MainView = 'tabs' | 'taskbox' | 'notifications' | 'rules'
+type MainView = 'tabs' | 'taskbox' | 'notifications' | 'rules' | 'jobs'
 
 /** Main-area panels in left-to-right order for Ctrl+←/→ switching; the task
     panel exists only on a processing tab, the Git panels only when the
@@ -198,6 +200,12 @@ export default function App(): React.JSX.Element {
     const unsubNotifFilters = window.sokking.onNotifFilterChanged(() => {
       void useIntakeStore.getState().refreshFilters()
     })
+    const unsubJobs = window.sokking.onJobChanged(() => {
+      void useJobsStore.getState().refresh()
+    })
+    const unsubExecutions = window.sokking.onExecutionChanged(() => {
+      void useJobsStore.getState().refreshExecutions()
+    })
     // Auto-processing: main prepared everything; the tab (and its pty) can
     // only be made here. The new tab doesn't steal the view — the person
     // may be in the middle of something else.
@@ -255,6 +263,8 @@ export default function App(): React.JSX.Element {
       unsubNotifLog()
       unsubNotifFilters()
       unsubAutoRun()
+      unsubJobs()
+      unsubExecutions()
       unsubOpenInEditor()
       unsubPersist()
       window.removeEventListener('focus', onFocus)
@@ -498,6 +508,7 @@ export default function App(): React.JSX.Element {
         onShowTaskBox={() => setView('taskbox')}
         onShowNotifications={() => setView('notifications')}
         onShowRules={() => setView('rules')}
+        onShowJobs={() => setView('jobs')}
         onTabSelected={() => setView('tabs')}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenBookmarks={() => setBookmarksOpen(true)}
@@ -601,6 +612,7 @@ export default function App(): React.JSX.Element {
           {view === 'taskbox' && <TaskBox onOpenInTab={openTaskInTab} />}
           {view === 'notifications' && <NotificationsView />}
           {view === 'rules' && <RulesView />}
+          {view === 'jobs' && <JobsView />}
           {view === 'tabs' && panel === 'task' && activeTab && (
             <TaskPanel key={activeTab.id} tab={activeTab} onRelaunch={setRunModalTask} />
           )}

@@ -23,6 +23,8 @@ import {
   OkResult,
   RuleCheckResult,
   RuleResult,
+  JobResult,
+  JobRunResult,
   RepoSetResult,
   RunStartResult,
   TaskRemoveResult,
@@ -37,6 +39,7 @@ import {
   NotificationLogEntry
 } from '../shared/notifications'
 import { AutoRunRequest, Rule, RuleInput } from '../shared/rules'
+import { Execution, JobInput, JobSummary } from '../shared/jobs'
 
 function subscribe<T>(channel: string, callback: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T): void => callback(payload)
@@ -170,7 +173,19 @@ const api = {
   onRuleChanged: (cb: () => void): (() => void) => subscribe<void>(IPC.RuleChanged, cb),
   /** Auto-processing: main wants a tab opened and a run launched for a task. */
   onAutoRunRequest: (cb: (req: AutoRunRequest) => void): (() => void) =>
-    subscribe<AutoRunRequest>(IPC.AutoRunRequest, cb)
+    subscribe<AutoRunRequest>(IPC.AutoRunRequest, cb),
+
+  jobList: (): Promise<JobSummary[]> => ipcRenderer.invoke(IPC.JobList),
+  jobAdd: (input: JobInput): Promise<JobResult> => ipcRenderer.invoke(IPC.JobAdd, input),
+  jobUpdate: (id: number, input: JobInput): Promise<JobResult> =>
+    ipcRenderer.invoke(IPC.JobUpdate, id, input),
+  jobRemove: (id: number): Promise<OkResult> => ipcRenderer.invoke(IPC.JobRemove, id),
+  jobRun: (id: number): Promise<JobRunResult> => ipcRenderer.invoke(IPC.JobRun, id),
+  onJobChanged: (cb: () => void): (() => void) => subscribe<void>(IPC.JobChanged, cb),
+  executionList: (jobId?: number, limit?: number): Promise<Execution[]> =>
+    ipcRenderer.invoke(IPC.ExecutionList, jobId, limit),
+  onExecutionChanged: (cb: () => void): (() => void) =>
+    subscribe<void>(IPC.ExecutionChanged, cb)
 }
 
 export type SokkingApi = typeof api

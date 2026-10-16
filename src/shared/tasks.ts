@@ -27,6 +27,8 @@ export interface Task {
   workdir: string | null
   /** The GitHub rule that imported it; null otherwise. */
   ruleId: number | null
+  /** The scheduled job that created it; null otherwise. */
+  jobId: number | null
   /** Waiting for the dispatcher to open its processing tab (a rule with auto). */
   autoPending: boolean
   /** ISO 8601 timestamps. */
@@ -42,6 +44,7 @@ export interface NewTask {
   sourceRef?: string | null
   workdir?: string | null
   ruleId?: number | null
+  jobId?: number | null
   autoPending?: boolean
 }
 

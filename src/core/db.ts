@@ -104,6 +104,38 @@ const MIGRATIONS: string[] = [
   ALTER TABLE task ADD COLUMN rule_id INTEGER REFERENCES rule(id) ON DELETE SET NULL;
   ALTER TABLE task ADD COLUMN auto_pending INTEGER NOT NULL DEFAULT 0;
   CREATE INDEX task_auto_pending ON task(auto_pending) WHERE auto_pending = 1;
+  `,
+  `
+  CREATE TABLE job (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    cron            TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    command         TEXT NOT NULL DEFAULT '',
+    prompt          TEXT NOT NULL DEFAULT '',
+    workdir         TEXT,
+    timeout_seconds INTEGER NOT NULL DEFAULT 3600,
+    permission_mode TEXT NOT NULL DEFAULT 'acceptEdits',
+    delivery        TEXT NOT NULL DEFAULT 'pr',
+    push_branch     TEXT,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    last_run_at     TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+  );
+  CREATE TABLE execution (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id      INTEGER NOT NULL REFERENCES job(id) ON DELETE CASCADE,
+    status      TEXT NOT NULL,
+    exit_code   INTEGER,
+    stdout      TEXT NOT NULL DEFAULT '',
+    stderr      TEXT NOT NULL DEFAULT '',
+    task_id     INTEGER,
+    started_at  TEXT NOT NULL,
+    finished_at TEXT
+  );
+  CREATE INDEX execution_job ON execution(job_id, id);
+  ALTER TABLE task ADD COLUMN job_id INTEGER REFERENCES job(id) ON DELETE SET NULL;
   `
 ]
 

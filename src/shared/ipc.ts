@@ -4,6 +4,7 @@ import type { Task } from './tasks'
 import type { RepoDefaults, Run } from './runs'
 import type { FilterAction, NotificationFilter } from './notifications'
 import type { Rule } from './rules'
+import type { Execution, Job } from './jobs'
 
 export const IPC = {
   PtyCreate: 'pty:create',
@@ -78,8 +79,24 @@ export const IPC = {
   /** main → renderer: rules changed (edited, or a check updated their status). */
   RuleChanged: 'rule:changed',
   /** main → renderer: open a tab for the task and launch the run (auto-processing). */
-  AutoRunRequest: 'auto:run-request'
+  AutoRunRequest: 'auto:run-request',
+  JobList: 'job:list',
+  JobAdd: 'job:add',
+  JobUpdate: 'job:update',
+  JobRemove: 'job:remove',
+  /** Run a job now, regardless of its schedule. */
+  JobRun: 'job:run',
+  /** main → renderer: jobs changed (edited, ran, or the scheduler state moved). */
+  JobChanged: 'job:changed',
+  ExecutionList: 'execution:list',
+  /** main → renderer: an execution started or finished. */
+  ExecutionChanged: 'execution:changed'
 } as const
+
+export type JobResult = { ok: true; job: Job } | { ok: false; error: string }
+export type JobRunResult =
+  | { ok: true; execution: Execution | null }
+  | { ok: false; error: string }
 
 export type RuleResult = { ok: true; rule: Rule } | { ok: false; error: string }
 export type RuleCheckResult =

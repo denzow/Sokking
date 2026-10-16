@@ -19,6 +19,7 @@ interface TaskRow {
   status: string
   workdir: string | null
   rule_id: number | null
+  job_id: number | null
   auto_pending: number
   created_at: string
   updated_at: string
@@ -82,8 +83,8 @@ export class TaskRepository {
     const now = new Date().toISOString()
     const result = this.db
       .prepare(
-        `INSERT INTO task (source, title, body, source_app, source_ref, status, workdir, rule_id, auto_pending, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'inbox', ?, ?, ?, ?, ?)`
+        `INSERT INTO task (source, title, body, source_app, source_ref, status, workdir, rule_id, job_id, auto_pending, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'inbox', ?, ?, ?, ?, ?, ?)`
       )
       .run(
         source,
@@ -93,6 +94,7 @@ export class TaskRepository {
         input.sourceRef ?? null,
         emptyToNull(input.workdir),
         input.ruleId ?? null,
+        input.jobId ?? null,
         input.autoPending ? 1 : 0,
         now,
         now
@@ -176,6 +178,7 @@ function toTask(row: TaskRow): Task {
     status: row.status as TaskStatus,
     workdir: row.workdir,
     ruleId: row.rule_id,
+    jobId: row.job_id,
     autoPending: row.auto_pending === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at

@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron'
 import { buildPrompt } from '../core/prompt'
 import { issueNumberFromUrl } from '../core/github'
 import type { RuleRepository } from '../core/rules'
+import type { JobRepository } from '../core/jobs'
 import type { RunRepository } from '../core/runs'
 import type { SettingsRepository } from '../core/settings'
 import type { TaskRepository } from '../core/tasks'
@@ -32,6 +33,7 @@ export class AutoDispatcher {
     private tasks: TaskRepository,
     private runs: RunRepository,
     private rules: RuleRepository,
+    private jobs: JobRepository,
     private settings: SettingsRepository,
     private getWindow: () => BrowserWindow | null,
     private log: (message: string) => void = () => {}
@@ -84,6 +86,7 @@ export class AutoDispatcher {
   }
 
   private async prepare(task: Task): Promise<AutoRunRequest | null> {
+    if (task.jobId !== null) return this.prepareJobTask(task)
     const rule = task.ruleId === null ? null : this.rules.get(task.ruleId)
     if (!rule) {
       // The rule is gone; the task stays in the box for a person.
@@ -118,6 +121,33 @@ export class AutoDispatcher {
         delivery: rule.delivery,
         pushBranch: rule.pushBranch,
         template: rule.promptTemplate
+      }),
+      mode: 'auto'
+    }
+    return { taskId: task.id, title: task.title, options }
+  }
+
+  /** A claude job's task: the job's prompt, in the job's directory, no worktree. */
+  private prepareJobTask(task: Task): AutoRunRequest | null {
+    const job = task.jobId === null ? null : this.jobs.get(task.jobId)
+    if (!job || !job.workdir) {
+      this.tasks.update(task.id, { autoPending: false })
+      return null
+    }
+    try {
+      ensureFolderTrusted(job.workdir)
+    } catch (e) {
+      this.log(`信頼設定を書けません (${job.workdir}): ${e instanceof Error ? e.message : e}`)
+    }
+    const options: RunOptions = {
+      workdir: job.workdir,
+      permissionMode: job.permissionMode,
+      delivery: job.delivery,
+      pushBranch: job.pushBranch,
+      prompt: buildPrompt(task, {
+        delivery: job.delivery,
+        pushBranch: job.pushBranch,
+        template: '{body}\n\n{delivery}'
       }),
       mode: 'auto'
     }

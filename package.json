@@ -38,6 +38,7 @@
   "dependencies": {
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-web-links": "^0.12.0",
+    "croner": "^9.1.0",
     "node-pty": "^1.1.0",
     "simple-git": "^3.36.0"
   },

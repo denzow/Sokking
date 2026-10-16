@@ -44,6 +44,9 @@ import { RuleError, RuleRepository } from '../core/rules'
 import { RuleRunner } from '../core/rule-runner'
 import { fetchIssues } from '../core/github'
 import type { RuleInput } from '../shared/rules'
+import { ExecutionRepository, JobError, JobRepository } from '../core/jobs'
+import { Scheduler } from '../core/scheduler'
+import type { JobInput, JobSummary } from '../shared/jobs'
 import { NewTask, TaskFilter, TaskPatch, TaskStatus, TASK_STATUSES } from '../shared/tasks'
 import { Delivery, RepoDefaults, RunOptions } from '../shared/runs'
 import {
@@ -120,11 +123,33 @@ notifLog.onChange(() => mainWindow?.webContents.send(IPC.NotifLogChanged))
 // for the tasks a rule wants processed automatically.
 const rules = new RuleRepository(db)
 const ruleRunner = new RuleRunner(rules, tasks, fetchIssues, (m) => console.log('[sokking] rules:', m))
-const autoDispatcher = new AutoDispatcher(tasks, runs, rules, settings, () => mainWindow, (m) =>
-  console.warn('[sokking] auto:', m)
-)
 rules.onChange(() => mainWindow?.webContents.send(IPC.RuleChanged))
 const RULE_TICK_MS = 15_000
+
+// Scheduled jobs: shell commands run here, claude jobs become auto tasks.
+const jobs = new JobRepository(db)
+const executions = new ExecutionRepository(db)
+const scheduler = new Scheduler(jobs, executions, tasks, undefined, (m) =>
+  console.warn('[sokking] scheduler:', m)
+)
+jobs.onChange(() => {
+  scheduler.sync()
+  mainWindow?.webContents.send(IPC.JobChanged)
+})
+executions.onChange(() => mainWindow?.webContents.send(IPC.ExecutionChanged))
+const EXECUTION_KEEP = { keepDays: 30, keepPerJob: 100 }
+
+const autoDispatcher = new AutoDispatcher(tasks, runs, rules, jobs, settings, () => mainWindow, (m) =>
+  console.warn('[sokking] auto:', m)
+)
+
+function jobSummaries(): JobSummary[] {
+  return jobs.list().map((job) => ({
+    ...job,
+    nextRunAt: scheduler.nextRun(job.id)?.toISOString() ?? null,
+    running: scheduler.isRunning(job.id)
+  }))
+}
 
 /** The log is pruned on start and daily; the cap keeps the view snappy. */
 const NOTIF_LOG_KEEP = { keepDays: 14, keepCount: 2000 }
@@ -151,7 +176,7 @@ function notificationStatus(): NotificationStatus {
 
 /** Turns a domain error into a renderer-facing failure; anything else propagates. */
 function domainErrorMessage(e: unknown): string {
-  if (e instanceof FilterError || e instanceof RuleError) return e.message
+  if (e instanceof FilterError || e instanceof RuleError || e instanceof JobError) return e.message
   return taskErrorMessage(e)
 }
 
@@ -417,6 +442,41 @@ function registerIpcHandlers(): void {
     void autoDispatcher.tick()
     return { ok: true, found: outcome.found, imported: outcome.imported.length }
   })
+
+  // Scheduled jobs and their executions.
+  ipcMain.handle(IPC.JobList, () => jobSummaries())
+  ipcMain.handle(IPC.JobAdd, (_e, input: JobInput) => {
+    try {
+      return { ok: true, job: jobs.add(input) }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.JobUpdate, (_e, id: number, input: JobInput) => {
+    try {
+      return { ok: true, job: jobs.update(id, input) }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.JobRemove, (_e, id: number) => {
+    try {
+      jobs.remove(id)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.JobRun, async (_e, id: number) => {
+    if (!jobs.get(id)) return { ok: false, error: `ジョブ #${id} がありません` }
+    mainWindow?.webContents.send(IPC.JobChanged)
+    const execution = await scheduler.runJob(id)
+    void autoDispatcher.tick()
+    return { ok: true, execution }
+  })
+  ipcMain.handle(IPC.ExecutionList, (_e, jobId?: number, limit?: number) =>
+    executions.list({ jobId, limit })
+  )
   ipcMain.handle(IPC.SettingGet, (_e, key: string) => settings.get(key))
   ipcMain.handle(IPC.SettingSet, (_e, key: string, value: string) => {
     settings.set(key, value)
@@ -673,6 +733,11 @@ app.whenReady().then(() => {
   syncNotificationMonitor()
   setInterval(() => void ruleRunner.tick(), RULE_TICK_MS)
   autoDispatcher.start()
+  // Shell jobs don't survive the process either.
+  executions.failAllRunning()
+  executions.prune(EXECUTION_KEEP)
+  setInterval(() => executions.prune(EXECUTION_KEEP), 24 * 3600_000)
+  scheduler.sync()
   cleanupStaleHookSockets(app.getPath('userData'))
   hookServer.start()
   cwdTracker.start()
@@ -710,5 +775,6 @@ app.on('before-quit', () => {
   controlServer.stop()
   notifMonitor.stop()
   autoDispatcher.stop()
+  scheduler.stop()
   db.close()
 })

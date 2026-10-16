@@ -9,10 +9,11 @@ import { closeTab } from '../tab-actions'
 
 interface SidebarProps {
   /** Which main view is showing — highlights the matching nav entry. */
-  view: 'tabs' | 'taskbox' | 'notifications' | 'rules'
+  view: 'tabs' | 'taskbox' | 'notifications' | 'rules' | 'jobs'
   onShowTaskBox: () => void
   onShowNotifications: () => void
   onShowRules: () => void
+  onShowJobs: () => void
   /** A session tab was clicked: the main area should show the tabs view. */
   onTabSelected: () => void
   onOpenSettings: () => void
@@ -38,6 +39,7 @@ export function Sidebar({
   onShowTaskBox,
   onShowNotifications,
   onShowRules,
+  onShowJobs,
   onTabSelected,
   onOpenSettings,
   onOpenBookmarks,
@@ -131,6 +133,14 @@ export function Sidebar({
         >
           <span className="sidebar-nav-icon">⚙</span>
           {!collapsed && <span className="sidebar-nav-label">ルール</span>}
+        </button>
+        <button
+          className={`sidebar-nav-item${view === 'jobs' ? ' active' : ''}`}
+          onClick={onShowJobs}
+          title="ジョブ: cron で動く定期実行"
+        >
+          <span className="sidebar-nav-icon">◷</span>
+          {!collapsed && <span className="sidebar-nav-label">ジョブ</span>}
         </button>
       </div>
       <div className="sidebar-tabs">
