@@ -3,8 +3,15 @@ import { Tab, tabLabel, useTabsStore } from '../stores/tabs'
 import { useBookmarksStore } from '../stores/bookmarks'
 import { useNotificationsStore } from '../stores/notifications'
 import { formatBinding, useKeybindingsStore } from '../stores/keybindings'
+import { selectInboxCount, useTasksStore } from '../stores/tasks'
+import { closeTab } from '../tab-actions'
 
 interface SidebarProps {
+  /** Which main view is showing — highlights the matching nav entry. */
+  view: 'tabs' | 'taskbox'
+  onShowTaskBox: () => void
+  /** A session tab was clicked: the main area should show the tabs view. */
+  onTabSelected: () => void
   onOpenSettings: () => void
   onOpenBookmarks: () => void
   onOpenNotifications: () => void
@@ -24,6 +31,9 @@ function loadWidth(): number {
 }
 
 export function Sidebar({
+  view,
+  onShowTaskBox,
+  onTabSelected,
   onOpenSettings,
   onOpenBookmarks,
   onOpenNotifications,
@@ -34,6 +44,7 @@ export function Sidebar({
   const addTab = useTabsStore((s) => s.addTab)
   const bookmarksCombo = useKeybindingsStore((s) => formatBinding(s.bindings.openBookmarks))
   const unreadNotifs = useNotificationsStore((s) => s.unread)
+  const inboxCount = useTasksStore(selectInboxCount)
   const [width, setWidth] = useState(loadWidth)
   // Width changes animate (the workspace collapse) — except while dragging
   // the resizer, where the transition would rubber-band behind the cursor.
@@ -77,18 +88,43 @@ export function Sidebar({
       className={`sidebar${collapsed ? ' collapsed' : ''}${resizing ? ' resizing' : ''}`}
       style={collapsed ? undefined : { width }}
     >
+      {/* Fixed entries above the session tabs: the places work comes from. */}
+      <div className="sidebar-nav">
+        <button
+          className={`sidebar-nav-item${view === 'taskbox' ? ' active' : ''}`}
+          onClick={onShowTaskBox}
+          title={`タスクボックス${inboxCount > 0 ? ` (受信箱 ${inboxCount} 件)` : ''}`}
+        >
+          <span className="sidebar-nav-icon">▤</span>
+          {!collapsed && <span className="sidebar-nav-label">タスクボックス</span>}
+          {inboxCount > 0 &&
+            (collapsed ? (
+              <span className="unread-dot" />
+            ) : (
+              <span className="sidebar-nav-badge">{inboxCount}</span>
+            ))}
+        </button>
+      </div>
       <div className="sidebar-tabs">
         {tabs.map((tab) => (
           <TabItem
             key={tab.id}
             tab={tab}
-            active={tab.id === activeTabId}
+            active={view === 'tabs' && tab.id === activeTabId}
             collapsed={collapsed}
+            onSelected={onTabSelected}
           />
         ))}
       </div>
       <div className="sidebar-footer">
-        <button className="sidebar-button" onClick={() => addTab()} title="新しいセッションタブ">
+        <button
+          className="sidebar-button"
+          onClick={() => {
+            addTab()
+            onTabSelected()
+          }}
+          title="新しいセッションタブ"
+        >
           ＋{!collapsed && ' 新しいセッションタブ'}
         </button>
         <button
@@ -130,15 +166,20 @@ export function Sidebar({
 function TabItem({
   tab,
   active,
-  collapsed
+  collapsed,
+  onSelected
 }: {
   tab: Tab
   active: boolean
   collapsed: boolean
+  onSelected: () => void
 }): React.JSX.Element {
-  const activateTab = useTabsStore((s) => s.activateTab)
-  const removeTab = useTabsStore((s) => s.removeTab)
+  const activateTabInStore = useTabsStore((s) => s.activateTab)
   const renameTab = useTabsStore((s) => s.renameTab)
+  const activateTab = (tabId: string): void => {
+    activateTabInStore(tabId)
+    onSelected()
+  }
   const toggleBookmark = useBookmarksStore((s) => s.toggleBookmark)
   const bookmarked = useBookmarksStore((s) => s.isBookmarked(tab.cwd))
   const [editing, setEditing] = useState(false)
@@ -250,8 +291,7 @@ function TabItem({
         title="セッションタブを閉じる"
         onClick={(e) => {
           e.stopPropagation()
-          window.sokking.ptyDispose(tab.id)
-          removeTab(tab.id)
+          closeTab(tab.id, { ptyAlive: true })
         }}
       >
         ×

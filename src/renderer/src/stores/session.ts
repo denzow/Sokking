@@ -5,6 +5,8 @@
 export interface SavedTab {
   cwd: string
   title: string | null
+  /** Task the tab was processing, so the link survives a restart. */
+  taskId?: number | null
 }
 
 export interface SavedSession {

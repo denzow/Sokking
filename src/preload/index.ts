@@ -18,8 +18,11 @@ import {
   TabActivityEvent,
   TabCwdEvent,
   TabProcessEvent,
+  TaskRemoveResult,
+  TaskResult,
   WorkspaceSearchResult
 } from '../shared/ipc'
+import { NewTask, Task, TaskFilter, TaskPatch } from '../shared/tasks'
 
 function subscribe<T>(channel: string, callback: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T): void => callback(payload)
@@ -100,7 +103,15 @@ const api = {
     ipcRenderer.invoke(IPC.GitRevert, cwd, hash),
 
   setGlobalHotkey: (accelerator: string | null): Promise<HotkeyRegisterResult> =>
-    ipcRenderer.invoke(IPC.HotkeySet, accelerator)
+    ipcRenderer.invoke(IPC.HotkeySet, accelerator),
+
+  taskList: (filter: TaskFilter = {}): Promise<Task[]> => ipcRenderer.invoke(IPC.TaskList, filter),
+  taskAdd: (input: NewTask): Promise<TaskResult> => ipcRenderer.invoke(IPC.TaskAdd, input),
+  taskUpdate: (id: number, patch: TaskPatch): Promise<TaskResult> =>
+    ipcRenderer.invoke(IPC.TaskUpdate, id, patch),
+  taskRemove: (id: number): Promise<TaskRemoveResult> => ipcRenderer.invoke(IPC.TaskRemove, id),
+  /** The task box changed (UI, CLI, or a background source wrote to it). */
+  onTaskChanged: (cb: () => void): (() => void) => subscribe<void>(IPC.TaskChanged, cb)
 }
 
 export type SokkingApi = typeof api

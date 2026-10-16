@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { TerminalView } from './components/TerminalView'
 import { TerminalSearch } from './components/TerminalSearch'
-import { forgetTreeState } from './components/FilesPanel'
 import {
   focusWorkspaceContent,
   focusWorkspaceTree,
@@ -11,7 +10,6 @@ import {
 } from './components/WorkspacePanel'
 import {
   closeEditorFile,
-  closeEditorFilesForTab,
   focusEditor,
   hasDirtyEditorFiles,
   requestEditorFocus
@@ -27,6 +25,10 @@ import { useTabsStore } from './stores/tabs'
 import { openFileInEditor, useEditorStore } from './stores/editor'
 import { openFile } from './stores/file-openers'
 import { useNotificationsStore } from './stores/notifications'
+import { useTasksStore } from './stores/tasks'
+import { TaskBox } from './components/TaskBox'
+import { closeTab } from './tab-actions'
+import type { Task } from '../../shared/tasks'
 import {
   ShortcutAction,
   toAccelerator,
@@ -36,6 +38,9 @@ import {
 import { loadSession, saveSession } from './stores/session'
 
 type MainPanel = 'terminal' | 'git' | 'workspace' | 'diff' | 'log'
+
+/** What the main area shows: the active session tab's panels, or the task box. */
+type MainView = 'tabs' | 'taskbox'
 
 /** Main-area panels in left-to-right order for Ctrl+←/→ switching; the Git
     panels only exist when the active tab's cwd is a repository, and the
@@ -48,6 +53,7 @@ export default function App(): React.JSX.Element {
   const tabs = useTabsStore((s) => s.tabs)
   const activeTabId = useTabsStore((s) => s.activeTabId)
   const [panel, setPanel] = useState<MainPanel>('terminal')
+  const [view, setView] = useState<MainView>('tabs')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bookmarksOpen, setBookmarksOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -123,6 +129,23 @@ export default function App(): React.JSX.Element {
     })()
   }, [])
 
+  // Open the processing tab for a task (or jump to the one already open):
+  // a shell in the task's workdir, titled after the task. The task moves to
+  // "running" while its tab exists.
+  const openTaskInTab = useCallback((task: Task): void => {
+    if (!task.workdir) return
+    const store = useTabsStore.getState()
+    const existing = store.tabs.find((t) => t.taskId === task.id)
+    if (existing) {
+      store.activateTab(existing.id)
+    } else {
+      store.addTab(task.workdir, { title: task.title, taskId: task.id })
+      if (task.status !== 'running') void useTasksStore.getState().setStatus(task.id, 'running')
+    }
+    setView('tabs')
+    setPanel('terminal')
+  }, [])
+
   // Global IPC listeners (registered once).
   useEffect(() => {
     const store = useTabsStore.getState()
@@ -136,14 +159,18 @@ export default function App(): React.JSX.Element {
       useTabsStore.getState().setActivity(tabId, state, message)
     })
     const unsubExit = window.sokking.onPtyExit(({ tabId }) => {
-      useTabsStore.getState().removeTab(tabId)
-      // The session tab is gone (shell exited) — its editor files and files-
-      // panel tree state go with it.
-      closeEditorFilesForTab(tabId)
-      forgetTreeState(tabId)
+      // The shell exited: the tab goes, with its editor files, tree state
+      // and (for a task tab) the task's running status.
+      closeTab(tabId, { ptyAlive: false })
     })
     const unsubNotification = window.sokking.onNotification((event) => {
       useNotificationsStore.getState().add(event)
+    })
+    // The task box is main's data; fetch it now and whenever main reports a
+    // change (the CLI and background sources write to it too).
+    void useTasksStore.getState().refresh()
+    const unsubTasks = window.sokking.onTaskChanged(() => {
+      void useTasksStore.getState().refresh()
     })
     // Files-panel context menu 「エディタで開く」. The helper reads in the
     // renderer (not main) so binaries still fall back to the external app
@@ -170,7 +197,7 @@ export default function App(): React.JSX.Element {
     // always saved by the time the app quits.
     const unsubPersist = useTabsStore.subscribe((state) => {
       saveSession({
-        tabs: state.tabs.map((t) => ({ cwd: t.cwd, title: t.title })),
+        tabs: state.tabs.map((t) => ({ cwd: t.cwd, title: t.title, taskId: t.taskId })),
         activeIndex: Math.max(
           0,
           state.tabs.findIndex((t) => t.id === state.activeTabId)
@@ -184,6 +211,7 @@ export default function App(): React.JSX.Element {
       unsubActivity()
       unsubExit()
       unsubNotification()
+      unsubTasks()
       unsubOpenInEditor()
       unsubPersist()
       window.removeEventListener('focus', onFocus)
@@ -198,6 +226,7 @@ export default function App(): React.JSX.Element {
       switch (action) {
         case 'newTab':
           store.addTab()
+          setView('tabs')
           break
         case 'closeTab':
           if (store.activeTabId) {
@@ -209,10 +238,7 @@ export default function App(): React.JSX.Element {
             ) {
               break
             }
-            window.sokking.ptyDispose(tabId)
-            store.removeTab(tabId)
-            closeEditorFilesForTab(tabId)
-            forgetTreeState(tabId)
+            closeTab(tabId, { ptyAlive: true })
           }
           break
         case 'closeEditorTab': {
@@ -253,9 +279,11 @@ export default function App(): React.JSX.Element {
         }
         case 'prevTab':
           store.activateRelative(-1)
+          setView('tabs')
           break
         case 'nextTab':
           store.activateRelative(1)
+          setView('tabs')
           break
         case 'moveTabUp':
           store.moveTab(-1)
@@ -423,16 +451,20 @@ export default function App(): React.JSX.Element {
   return (
     <div className="app">
       <Sidebar
+        view={view}
+        onShowTaskBox={() => setView('taskbox')}
+        onTabSelected={() => setView('tabs')}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenBookmarks={() => setBookmarksOpen(true)}
         onOpenNotifications={() => setNotificationsOpen(true)}
         // The workspace wants the horizontal room — the tab list shrinks to a
         // first-character rail while it is showing.
-        collapsed={panel === 'workspace'}
+        collapsed={view === 'tabs' && panel === 'workspace'}
       />
       <div className="main">
         {/* A top bar switches the main area between the terminal, the files
             panel, and (when the cwd is a git repo) the two Git panels. */}
+        {view === 'tabs' && (
         <div className="view-tabs">
           <button
             className={`view-tab${panel === 'terminal' ? ' active' : ''}`}
@@ -489,15 +521,19 @@ export default function App(): React.JSX.Element {
             </span>
           )}
         </div>
+        )}
         <div className="view-content">
           {/* Terminals stay mounted (ptys alive) but are hidden while another
-              panel takes over the area. */}
-          <div className="terminals" style={{ display: panel === 'terminal' ? 'block' : 'none' }}>
+              panel — or the task box — takes over the area. */}
+          <div
+            className="terminals"
+            style={{ display: view === 'tabs' && panel === 'terminal' ? 'block' : 'none' }}
+          >
             {tabs.map((tab) => (
               <TerminalView
                 key={tab.id}
                 tab={tab}
-                active={tab.id === activeTabId && panel === 'terminal'}
+                active={view === 'tabs' && tab.id === activeTabId && panel === 'terminal'}
               />
             ))}
             {searchOpen && activeTabId && (
@@ -508,16 +544,17 @@ export default function App(): React.JSX.Element {
               />
             )}
           </div>
-          {panel === 'git' && activeTab && <GitControlPanel tab={activeTab} />}
-          {panel === 'workspace' && activeTab && (
+          {view === 'taskbox' && <TaskBox onOpenInTab={openTaskInTab} />}
+          {view === 'tabs' && panel === 'git' && activeTab && <GitControlPanel tab={activeTab} />}
+          {view === 'tabs' && panel === 'workspace' && activeTab && (
             // Keyed by tab: the side pane's saved state is per tab, and
             // restoring it happens at mount.
             <WorkspacePanel key={activeTab.id} tab={activeTab} />
           )}
-          {panel === 'diff' && activeTab && (
+          {view === 'tabs' && panel === 'diff' && activeTab && (
             <GitDiffPanel tab={activeTab} onOpenInEditor={openPathInWorkspace} />
           )}
-          {panel === 'log' && activeTab && <GitLogPanel tab={activeTab} />}
+          {view === 'tabs' && panel === 'log' && activeTab && <GitLogPanel tab={activeTab} />}
         </div>
       </div>
       {tabSearchOpen && (
@@ -525,6 +562,7 @@ export default function App(): React.JSX.Element {
           onClose={() => setTabSearchOpen(false)}
           onSelect={(tabId) => {
             useTabsStore.getState().activateTab(tabId)
+            setView('tabs')
             setTabSearchOpen(false)
           }}
         />
@@ -536,6 +574,7 @@ export default function App(): React.JSX.Element {
           onClose={() => setNotificationsOpen(false)}
           onJumpToTab={(tabId) => {
             useTabsStore.getState().activateTab(tabId)
+            setView('tabs')
             setPanel('terminal')
             setNotificationsOpen(false)
           }}

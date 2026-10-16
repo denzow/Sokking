@@ -1,5 +1,7 @@
 // IPC channel names and payload types shared across main / preload / renderer.
 
+import type { Task } from './tasks'
+
 export const IPC = {
   PtyCreate: 'pty:create',
   PtyWrite: 'pty:write',
@@ -36,8 +38,18 @@ export const IPC = {
   GitPush: 'git:push',
   GitUndoCommit: 'git:undo-commit',
   GitRevert: 'git:revert',
-  HotkeySet: 'hotkey:set'
+  HotkeySet: 'hotkey:set',
+  TaskList: 'task:list',
+  TaskAdd: 'task:add',
+  TaskUpdate: 'task:update',
+  TaskRemove: 'task:remove',
+  /** main → renderer: the task box changed (any writer); re-fetch. */
+  TaskChanged: 'task:changed'
 } as const
+
+/** Outcome of a task-box write; errors are user-facing messages. */
+export type TaskResult = { ok: true; task: Task } | { ok: false; error: string }
+export type TaskRemoveResult = { ok: true } | { ok: false; error: string }
 
 export interface PtyCreateRequest {
   tabId: string

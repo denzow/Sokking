@@ -27,6 +27,10 @@ import { searchEntryNames, workspaceSearch } from './search-service'
 import { cleanupStaleHookSockets, HookServer } from './hook-server'
 import { HookInstaller } from './hook-installer'
 import { Notifier } from './notifier'
+import { openDatabase } from '../core/db'
+import { TaskError, TaskRepository } from '../core/tasks'
+import { ControlServer } from '../core/control-server'
+import { NewTask, TaskFilter, TaskPatch, TaskStatus, TASK_STATUSES } from '../shared/tasks'
 import appIcon from '../../resources/icon.png?asset'
 
 let mainWindow: BrowserWindow | null = null
@@ -60,6 +64,43 @@ const notifier = new Notifier(
 )
 const hookServer = new HookServer(socketPath, (event) => notifier.handleHookEvent(event))
 const hookInstaller = new HookInstaller()
+
+// The task box and everything else that outlives a window: SQLite under
+// userData (so dev and the installed app never share a database), plus the
+// control socket the CLI talks to. Fixed socket name — the CLI has to find
+// it without knowing our pid; dev instances live in their own userData.
+const db = openDatabase(path.join(app.getPath('userData'), 'sokking.db'))
+const tasks = new TaskRepository(db)
+const controlServer = new ControlServer(path.join(app.getPath('userData'), 'control.sock'))
+tasks.onChange(() => mainWindow?.webContents.send(IPC.TaskChanged))
+
+function registerControlHandlers(): void {
+  controlServer.handle('ping', () => ({ ok: true }))
+  controlServer.handle('task.add', (req) => {
+    const task = tasks.add({
+      title: String(req.title ?? ''),
+      body: typeof req.body === 'string' ? req.body : '',
+      workdir: typeof req.workdir === 'string' ? req.workdir : null,
+      source: (req.source as NewTask['source']) ?? 'manual',
+      sourceRef: typeof req.sourceRef === 'string' ? req.sourceRef : null,
+      sourceApp: typeof req.sourceApp === 'string' ? req.sourceApp : null
+    })
+    return { ok: true, task }
+  })
+  controlServer.handle('task.list', (req) => {
+    const status = typeof req.status === 'string' ? req.status : null
+    if (status && !TASK_STATUSES.includes(status as TaskStatus)) {
+      throw new Error(`不明な status: ${status}`)
+    }
+    return { ok: true, tasks: tasks.list(status ? { status: status as TaskStatus } : {}) }
+  })
+}
+
+/** Turns a TaskError into a renderer-facing failure; anything else propagates. */
+function taskErrorMessage(e: unknown): string {
+  if (e instanceof TaskError) return e.message
+  throw e
+}
 
 // The global summon hotkey (default F12, overridden by the renderer's
 // keybindings store via IPC once it loads). Quake-style toggle: summon the
@@ -163,6 +204,32 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.HotkeySet, (_e, accelerator: string | null) => registerHotkey(accelerator))
+
+  // Task box. Writes answer with the stored row; validation failures come
+  // back as messages instead of rejected promises so the UI can show them.
+  ipcMain.handle(IPC.TaskList, (_e, filter: TaskFilter = {}) => tasks.list(filter))
+  ipcMain.handle(IPC.TaskAdd, (_e, input: NewTask) => {
+    try {
+      return { ok: true, task: tasks.add(input) }
+    } catch (e) {
+      return { ok: false, error: taskErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.TaskUpdate, (_e, id: number, patch: TaskPatch) => {
+    try {
+      return { ok: true, task: tasks.update(id, patch) }
+    } catch (e) {
+      return { ok: false, error: taskErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.TaskRemove, (_e, id: number) => {
+    try {
+      tasks.remove(id)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: taskErrorMessage(e) }
+    }
+  })
 
   // Directory listing for the files panel.
   ipcMain.handle(IPC.FsList, async (_e, dir: string): Promise<FsListResult> => {
@@ -404,6 +471,8 @@ app.whenReady().then(() => {
   // No application menu bar — sokking drives everything from its own UI.
   Menu.setApplicationMenu(null)
   registerIpcHandlers()
+  registerControlHandlers()
+  controlServer.start()
   cleanupStaleHookSockets(app.getPath('userData'))
   hookServer.start()
   cwdTracker.start()
@@ -438,4 +507,6 @@ app.on('before-quit', () => {
   processTracker.stop()
   ptyManager.disposeAll()
   hookServer.stop()
+  controlServer.stop()
+  db.close()
 })

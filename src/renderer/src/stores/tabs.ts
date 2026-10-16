@@ -22,14 +22,27 @@ export interface Tab {
    * sidebar highlights the whole row until the tab is viewed again.
    */
   attention: boolean
+  /** The task this tab processes (opened from the task box); null for a plain shell. */
+  taskId: number | null
+}
+
+export interface AddTabOptions {
+  title?: string | null
+  taskId?: number | null
+}
+
+export interface SavedTabInput {
+  cwd: string
+  title: string | null
+  taskId?: number | null
 }
 
 interface TabsState {
   tabs: Tab[]
   activeTabId: string | null
-  /** cwd omitted → the new tab inherits the active tab's directory. */
-  addTab: (cwd?: string) => void
-  restoreTabs: (saved: { cwd: string; title: string | null }[], activeIndex: number) => void
+  /** cwd omitted → the new tab inherits the active tab's directory. Returns the new tab's id. */
+  addTab: (cwd?: string, options?: AddTabOptions) => string
+  restoreTabs: (saved: SavedTabInput[], activeIndex: number) => void
   removeTab: (tabId: string) => void
   activateTab: (tabId: string) => void
   activateRelative: (offset: number) => void
@@ -55,7 +68,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   tabs: [],
   activeTabId: null,
 
-  addTab: (cwd) => {
+  addTab: (cwd, options = {}) => {
     const id = `tab-${Date.now().toString(36)}-${++tabCounter}`
     set((s) => {
       const activeIndex = s.tabs.findIndex((t) => t.id === s.activeTabId)
@@ -64,18 +77,20 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       const startCwd = cwd ?? (activeIndex === -1 ? '' : s.tabs[activeIndex].cwd)
       const tab: Tab = {
         id,
-        title: null,
+        title: options.title ?? null,
         cwd: startCwd,
         activity: null,
         activityMessage: '',
         runningProcess: null,
-        attention: false
+        attention: false,
+        taskId: options.taskId ?? null
       }
       const tabs = [...s.tabs]
       // Insert right after the active tab (or at the end if there is none).
       tabs.splice(activeIndex === -1 ? tabs.length : activeIndex + 1, 0, tab)
       return { tabs, activeTabId: id }
     })
+    return id
   },
 
   restoreTabs: (saved, activeIndex) => {
@@ -86,7 +101,8 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       activity: null,
       activityMessage: '',
       runningProcess: null,
-      attention: false
+      attention: false,
+      taskId: st.taskId ?? null
     }))
     const active = tabs[activeIndex] ?? tabs[0] ?? null
     set({ tabs, activeTabId: active?.id ?? null })
