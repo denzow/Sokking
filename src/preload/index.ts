@@ -25,6 +25,7 @@ import {
   RuleResult,
   JobResult,
   JobRunResult,
+  AutoStatus,
   RepoSetResult,
   RunStartResult,
   TaskRemoveResult,
@@ -185,7 +186,12 @@ const api = {
   executionList: (jobId?: number, limit?: number): Promise<Execution[]> =>
     ipcRenderer.invoke(IPC.ExecutionList, jobId, limit),
   onExecutionChanged: (cb: () => void): (() => void) =>
-    subscribe<void>(IPC.ExecutionChanged, cb)
+    subscribe<void>(IPC.ExecutionChanged, cb),
+
+  autoStatus: (): Promise<AutoStatus> => ipcRenderer.invoke(IPC.AutoStatus),
+  autoResume: (): Promise<OkResult> => ipcRenderer.invoke(IPC.AutoResume),
+  /** Hide the window to the tray. */
+  windowHide: (): void => ipcRenderer.send(IPC.WindowHide)
 }
 
 export type SokkingApi = typeof api

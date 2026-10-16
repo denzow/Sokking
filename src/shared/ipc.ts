@@ -5,6 +5,7 @@ import type { RepoDefaults, Run } from './runs'
 import type { FilterAction, NotificationFilter } from './notifications'
 import type { Rule } from './rules'
 import type { Execution, Job } from './jobs'
+import type { RateLimitStatus } from '../core/rate-limit'
 
 export const IPC = {
   PtyCreate: 'pty:create',
@@ -90,8 +91,22 @@ export const IPC = {
   JobChanged: 'job:changed',
   ExecutionList: 'execution:list',
   /** main → renderer: an execution started or finished. */
-  ExecutionChanged: 'execution:changed'
+  ExecutionChanged: 'execution:changed',
+  AutoStatus: 'auto:status',
+  /** Lift a rate-limit pause by hand. */
+  AutoResume: 'auto:resume',
+  /** Ask the window to hide to the tray (the renderer's own close control). */
+  WindowHide: 'window:hide'
 } as const
+
+/** Auto-processing state for the rules view. */
+export interface AutoStatus {
+  maxParallel: number
+  openRuns: number
+  /** Tasks waiting for a slot. */
+  pending: number
+  rateLimit: RateLimitStatus
+}
 
 export type JobResult = { ok: true; job: Job } | { ok: false; error: string }
 export type JobRunResult =

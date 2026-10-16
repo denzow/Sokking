@@ -47,6 +47,10 @@ import type { RuleInput } from '../shared/rules'
 import { ExecutionRepository, JobError, JobRepository } from '../core/jobs'
 import { Scheduler } from '../core/scheduler'
 import type { JobInput, JobSummary } from '../shared/jobs'
+import { RateLimitGuard } from '../core/rate-limit'
+import { HttpControlServer } from '../core/http-server'
+import { AppTray } from './tray'
+import { DEFAULT_HTTP_PORT, SETTING_HTTP_PORT } from '../shared/settings'
 import { NewTask, TaskFilter, TaskPatch, TaskStatus, TASK_STATUSES } from '../shared/tasks'
 import { Delivery, RepoDefaults, RunOptions } from '../shared/runs'
 import {
@@ -139,9 +143,43 @@ jobs.onChange(() => {
 executions.onChange(() => mainWindow?.webContents.send(IPC.ExecutionChanged))
 const EXECUTION_KEEP = { keepDays: 30, keepPerJob: 100 }
 
-const autoDispatcher = new AutoDispatcher(tasks, runs, rules, jobs, settings, () => mainWindow, (m) =>
-  console.warn('[sokking] auto:', m)
+// Rate limits show up in the tabs' output; while one is in effect no new
+// automatic session is launched.
+const rateLimit = new RateLimitGuard((m) => console.warn('[sokking] rate limit:', m))
+ptyManager.onData((tabId, data) => {
+  if (rateLimit.noteOutput(tabId, data)) mainWindow?.webContents.send(IPC.RuleChanged)
+})
+const autoDispatcher = new AutoDispatcher(
+  tasks,
+  runs,
+  rules,
+  jobs,
+  settings,
+  () => mainWindow,
+  rateLimit,
+  (m) => console.warn('[sokking] auto:', m)
 )
+
+// Loopback HTTP face of the control socket (curl, browser extensions).
+const httpServer = new HttpControlServer(
+  (req) => controlServer.invoke(req),
+  (m) => console.log('[sokking]', m)
+)
+
+function httpPort(): number {
+  const raw = Number(settings.get(SETTING_HTTP_PORT))
+  if (settings.get(SETTING_HTTP_PORT) === null) return DEFAULT_HTTP_PORT
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : DEFAULT_HTTP_PORT
+}
+
+function syncHttpServer(): void {
+  const port = httpPort()
+  if (port === 0) httpServer.stop()
+  else httpServer.start(port)
+}
+
+// Tray: the window hides on close, the app lives on.
+const tray = new AppTray(appIcon, () => mainWindow, () => createWindow())
 
 function jobSummaries(): JobSummary[] {
   return jobs.list().map((job) => ({
@@ -188,6 +226,10 @@ const hookServer = new HookServer(socketPath, (event) => {
 
 function registerControlHandlers(): void {
   controlServer.handle('ping', () => ({ ok: true }))
+  controlServer.handle('window.show', () => {
+    tray.show()
+    return { ok: true }
+  })
   controlServer.handle('task.add', (req) => {
     const task = tasks.add({
       title: String(req.title ?? ''),
@@ -263,6 +305,10 @@ function createWindow(): void {
       preload: path.join(__dirname, '../preload/index.js'),
       sandbox: false
     }
+  })
+
+  mainWindow.on('close', (event) => {
+    if (mainWindow && tray.interceptClose(mainWindow)) event.preventDefault()
   })
 
   mainWindow.on('closed', () => {
@@ -481,8 +527,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.SettingSet, (_e, key: string, value: string) => {
     settings.set(key, value)
     if (key === SETTING_NOTIFICATION_MONITOR_ENABLED) syncNotificationMonitor()
+    if (key === SETTING_HTTP_PORT) syncHttpServer()
     return { ok: true }
   })
+  ipcMain.handle(IPC.AutoStatus, () => autoDispatcher.status())
+  ipcMain.handle(IPC.AutoResume, () => {
+    rateLimit.resume()
+    void autoDispatcher.tick()
+    return { ok: true }
+  })
+  ipcMain.on(IPC.WindowHide, () => mainWindow?.hide())
 
   // Directory listing for the files panel.
   ipcMain.handle(IPC.FsList, async (_e, dir: string): Promise<FsListResult> => {
@@ -738,6 +792,8 @@ app.whenReady().then(() => {
   executions.prune(EXECUTION_KEEP)
   setInterval(() => executions.prune(EXECUTION_KEEP), 24 * 3600_000)
   scheduler.sync()
+  syncHttpServer()
+  tray.start()
   cleanupStaleHookSockets(app.getPath('userData'))
   hookServer.start()
   cwdTracker.start()
@@ -759,8 +815,10 @@ app.whenReady().then(() => {
   app.on('browser-window-focus', () => notifier.closeAll())
 })
 
+// The window hides rather than closes (see AppTray), so this only fires on
+// the way out; background work needs no window.
 app.on('window-all-closed', () => {
-  app.quit()
+  if (tray.quitting) app.quit()
 })
 
 app.on('will-quit', () => {
@@ -776,5 +834,7 @@ app.on('before-quit', () => {
   notifMonitor.stop()
   autoDispatcher.stop()
   scheduler.stop()
+  httpServer.stop()
+  tray.stop()
   db.close()
 })

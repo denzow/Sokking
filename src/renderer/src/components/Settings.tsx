@@ -18,10 +18,11 @@ import {
   useAppearanceStore
 } from '../stores/appearance'
 import { useFileOpenersStore } from '../stores/file-openers'
+import { DEFAULT_HTTP_PORT, SETTING_HTTP_PORT } from '../../../shared/settings'
 
 const MODIFIER_KEYS = ['Control', 'Shift', 'Alt', 'Meta']
 
-type Section = 'appearance' | 'shortcuts' | 'files'
+type Section = 'appearance' | 'shortcuts' | 'files' | 'sokking'
 
 interface SettingsProps {
   onClose: () => void
@@ -74,13 +75,69 @@ export function Settings({ onClose }: SettingsProps): React.JSX.Element {
             >
               ファイル
             </button>
+            <button
+              className={`settings-nav-item${section === 'sokking' ? ' active' : ''}`}
+              onClick={() => setSection('sokking')}
+            >
+              連携
+            </button>
           </nav>
           <div className="settings-content">
             {section === 'appearance' && <AppearanceSettings />}
             {section === 'shortcuts' && <ShortcutSettings />}
             {section === 'files' && <FileOpenerSettings />}
+            {section === 'sokking' && <IntegrationSettings />}
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** How other programs reach the task box: the HTTP port (and the socket, for reference). */
+function IntegrationSettings(): React.JSX.Element {
+  const [port, setPort] = useState<string>('')
+  const [saved, setSaved] = useState<string | null>(null)
+
+  useEffect(() => {
+    void window.sokking.settingGet(SETTING_HTTP_PORT).then((v) => setPort(v ?? String(DEFAULT_HTTP_PORT)))
+  }, [])
+
+  const commit = (): void => {
+    const n = Math.floor(Number(port))
+    if (!Number.isFinite(n) || n < 0 || n > 65535) {
+      setSaved('0〜65535 の数を入れてください')
+      return
+    }
+    void window.sokking.settingSet(SETTING_HTTP_PORT, String(n)).then(() => {
+      setSaved(n === 0 ? 'HTTP を止めました' : `http://127.0.0.1:${n}/ で待ち受けます`)
+    })
+  }
+
+  return (
+    <div className="appearance-settings">
+      <div className="setting-group">
+        <span className="setting-label">ローカル HTTP のポート (0 で無効)</span>
+        <div className="setting-row">
+          <input
+            className="setting-input"
+            type="number"
+            min={0}
+            max={65535}
+            value={port}
+            onChange={(e) => setPort(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit()
+            }}
+          />
+        </div>
+        {saved && <div className="settings-hint">{saved}</div>}
+      </div>
+      <div className="settings-hint">
+        127.0.0.1 だけで待ち受けます。POST /tasks でタスクを積み、GET /tasks?status=inbox で一覧を取れます。
+        <br />
+        同じ内容は Unix ソケット(設定ディレクトリの control.sock)と bin/sokking.js からも使えます。
       </div>
     </div>
   )

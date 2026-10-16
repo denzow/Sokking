@@ -8,6 +8,8 @@ import type { SettingsRepository } from '../core/settings'
 import type { TaskRepository } from '../core/tasks'
 import { prepareIssueWorktree } from '../core/worktree'
 import { ensureFolderTrusted } from '../core/claude-config'
+import type { RateLimitGuard } from '../core/rate-limit'
+import type { AutoStatus } from '../shared/ipc'
 import { IPC } from '../shared/ipc'
 import { AutoRunRequest, DEFAULT_MAX_PARALLEL_RUNS, SETTING_MAX_PARALLEL_RUNS } from '../shared/rules'
 import type { RunOptions } from '../shared/runs'
@@ -36,8 +38,18 @@ export class AutoDispatcher {
     private jobs: JobRepository,
     private settings: SettingsRepository,
     private getWindow: () => BrowserWindow | null,
+    private rateLimit: RateLimitGuard,
     private log: (message: string) => void = () => {}
   ) {}
+
+  status(): AutoStatus {
+    return {
+      maxParallel: this.maxParallel(),
+      openRuns: this.runs.listOpen().length,
+      pending: this.tasks.listAutoPending().length,
+      rateLimit: this.rateLimit.status()
+    }
+  }
 
   start(): void {
     if (this.timer) return
@@ -63,6 +75,8 @@ export class AutoDispatcher {
     if (this.busy) return
     const win = this.getWindow()
     if (!win) return
+    // Launching more sessions into a rate limit only burns the window.
+    if (this.rateLimit.isPaused()) return
     this.busy = true
     try {
       const now = Date.now()

@@ -66,13 +66,21 @@ export class ControlServer {
     conn.on('error', () => {})
   }
 
+  /** Runs a request through its handler; failures come back as {ok: false}. */
+  async invoke(req: ControlRequest): Promise<ControlResponse | { ok: false; error: string }> {
+    try {
+      const handler = typeof req.op === 'string' ? this.handlers.get(req.op) : undefined
+      if (!handler) throw new Error(`不明な op: ${String(req.op)}`)
+      return await handler(req)
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
   private async dispatch(line: string, conn: net.Socket): Promise<void> {
     let response: Record<string, unknown>
     try {
-      const req = JSON.parse(line) as ControlRequest
-      const handler = typeof req.op === 'string' ? this.handlers.get(req.op) : undefined
-      if (!handler) throw new Error(`不明な op: ${String(req.op)}`)
-      response = await handler(req)
+      response = await this.invoke(JSON.parse(line) as ControlRequest)
     } catch (e) {
       response = { ok: false, error: e instanceof Error ? e.message : String(e) }
     }

@@ -9,6 +9,7 @@ import {
   SETTING_MAX_PARALLEL_RUNS
 } from '../../../shared/rules'
 import { useRulesStore } from '../stores/rules'
+import type { AutoStatus } from '../../../shared/ipc'
 
 function expandHome(dir: string): string {
   const home = window.sokking.homeDir
@@ -83,13 +84,20 @@ export function RulesView(): React.JSX.Element {
   const clearError = useRulesStore((s) => s.clearError)
   const [draft, setDraft] = useState<RuleDraft | null>(null)
   const [maxParallel, setMaxParallel] = useState<string>('')
+  const [auto, setAuto] = useState<AutoStatus | null>(null)
 
   useEffect(() => {
     void useRulesStore.getState().refresh()
     void window.sokking.settingGet(SETTING_MAX_PARALLEL_RUNS).then((v) => {
       setMaxParallel(v ?? String(DEFAULT_MAX_PARALLEL_RUNS))
     })
-  }, [])
+    const refreshAuto = (): void => {
+      void window.sokking.autoStatus().then(setAuto)
+    }
+    refreshAuto()
+    const timer = window.setInterval(refreshAuto, 5000)
+    return () => window.clearInterval(timer)
+  }, [rules])
 
   const commitMaxParallel = (): void => {
     const n = Math.floor(Number(maxParallel))
@@ -118,6 +126,25 @@ export function RulesView(): React.JSX.Element {
             }}
           />
         </label>
+        {auto && (
+          <span className="notif-switch" title="自動処理の状態">
+            実行中 {auto.openRuns} / 待ち {auto.pending}
+            {auto.rateLimit.pausedUntil && (
+              <>
+                <span className="rule-row-error">
+                  {' '}
+                  レート制限のため {formatTime(auto.rateLimit.pausedUntil)} まで停止
+                </span>
+                <button
+                  className="start-run-link"
+                  onClick={() => void window.sokking.autoResume().then(() => window.sokking.autoStatus().then(setAuto))}
+                >
+                  再開
+                </button>
+              </>
+            )}
+          </span>
+        )}
         <span className="notif-spacer" />
         <button className="notif-button" onClick={() => setDraft(emptyDraft())}>
           ＋ ルール

@@ -5,6 +5,7 @@
 //               [--source <manual|notification|github|schedule>] [--ref <url>] [--app <name>]
 //   sokking list [--status <inbox|running|review|done|archived>] [--json]
 //   sokking ping
+//   sokking show
 //
 // Talks to the app over its control socket (JSON lines on a Unix socket).
 // The socket lives in the app's config dir; --dev targets a `npm run dev`
@@ -85,6 +86,7 @@ function usage() {
       '  sokking add <title> [--body <text>|-] [--workdir <dir>] [--source <src>] [--ref <url>] [--app <name>]',
       '  sokking list [--status <status>] [--json]',
       '  sokking ping',
+      '  sokking show        (ウィンドウを前面に出す)',
       'オプション: --dev (開発インスタンスに接続)'
     ].join('\n')
   )
@@ -133,6 +135,12 @@ async function main() {
     const res = await request(sock, { op: 'ping' })
     if (!res.ok) throw new Error(res.error)
     console.log(`ok (${sock})`)
+    return
+  }
+
+  if (command === 'show') {
+    const res = await request(sock, { op: 'window.show' })
+    if (!res.ok) throw new Error(res.error)
     return
   }
 

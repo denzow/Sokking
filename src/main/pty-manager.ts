@@ -17,6 +17,7 @@ export function defaultShell(): string {
 export class PtyManager {
   private sessions = new Map<string, PtySession>()
   private exitListeners = new Set<(tabId: string) => void>()
+  private dataListeners = new Set<(tabId: string, data: string) => void>()
 
   constructor(
     private getWebContents: () => WebContents | null,
@@ -59,6 +60,7 @@ export class PtyManager {
     proc.onData((data) => {
       const payload: PtyDataEvent = { tabId, data }
       this.getWebContents()?.send(IPC.PtyData, payload)
+      for (const listener of this.dataListeners) listener(tabId, data)
     })
 
     proc.onExit(({ exitCode }) => {
@@ -85,6 +87,12 @@ export class PtyManager {
 
   has(tabId: string): boolean {
     return this.sessions.has(tabId)
+  }
+
+  /** Main-side tap on every tab's output (the renderer gets PtyData regardless). */
+  onData(listener: (tabId: string, data: string) => void): () => void {
+    this.dataListeners.add(listener)
+    return () => this.dataListeners.delete(listener)
   }
 
   /** Main-side notice that a tab's shell exited (the renderer gets PtyExit). */
