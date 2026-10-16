@@ -28,6 +28,8 @@ import { useNotificationsStore } from './stores/notifications'
 import { useTasksStore } from './stores/tasks'
 import { useRunsStore } from './stores/runs'
 import { TaskBox } from './components/TaskBox'
+import { NotificationsView } from './components/NotificationsView'
+import { useIntakeStore } from './stores/notification-intake'
 import { TaskPanel } from './components/TaskPanel'
 import { StartRunModal } from './components/StartRunModal'
 import { closeTab } from './tab-actions'
@@ -42,8 +44,9 @@ import { loadSession, saveSession } from './stores/session'
 
 type MainPanel = 'terminal' | 'task' | 'git' | 'workspace' | 'diff' | 'log'
 
-/** What the main area shows: the active session tab's panels, or the task box. */
-type MainView = 'tabs' | 'taskbox'
+/** What the main area shows: the active session tab's panels, the task box,
+    or the notification intake. */
+type MainView = 'tabs' | 'taskbox' | 'notifications'
 
 /** Main-area panels in left-to-right order for Ctrl+←/→ switching; the task
     panel exists only on a processing tab, the Git panels only when the
@@ -185,6 +188,15 @@ export default function App(): React.JSX.Element {
     const unsubRuns = window.sokking.onRunChanged(() => {
       void useRunsStore.getState().refreshAll()
     })
+    // The notification log is fetched up front so the sidebar's unseen
+    // count works before the view has ever been opened.
+    void useIntakeStore.getState().refreshLog()
+    const unsubNotifLog = window.sokking.onNotifLogChanged(() => {
+      void useIntakeStore.getState().refreshLog()
+    })
+    const unsubNotifFilters = window.sokking.onNotifFilterChanged(() => {
+      void useIntakeStore.getState().refreshFilters()
+    })
     // Files-panel context menu 「エディタで開く」. The helper reads in the
     // renderer (not main) so binaries still fall back to the external app
     // (configured opener or OS default).
@@ -226,6 +238,8 @@ export default function App(): React.JSX.Element {
       unsubNotification()
       unsubTasks()
       unsubRuns()
+      unsubNotifLog()
+      unsubNotifFilters()
       unsubOpenInEditor()
       unsubPersist()
       window.removeEventListener('focus', onFocus)
@@ -467,6 +481,7 @@ export default function App(): React.JSX.Element {
       <Sidebar
         view={view}
         onShowTaskBox={() => setView('taskbox')}
+        onShowNotifications={() => setView('notifications')}
         onTabSelected={() => setView('tabs')}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenBookmarks={() => setBookmarksOpen(true)}
@@ -568,6 +583,7 @@ export default function App(): React.JSX.Element {
             )}
           </div>
           {view === 'taskbox' && <TaskBox onOpenInTab={openTaskInTab} />}
+          {view === 'notifications' && <NotificationsView />}
           {view === 'tabs' && panel === 'task' && activeTab && (
             <TaskPanel key={activeTab.id} tab={activeTab} onRelaunch={setRunModalTask} />
           )}

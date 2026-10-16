@@ -2,6 +2,7 @@
 
 import type { Task } from './tasks'
 import type { RepoDefaults, Run } from './runs'
+import type { FilterAction, NotificationFilter } from './notifications'
 
 export const IPC = {
   PtyCreate: 'pty:create',
@@ -52,8 +53,34 @@ export const IPC = {
   RunChanged: 'run:changed',
   RepoResolve: 'repo:resolve',
   RepoSet: 'repo:set',
-  PromptBuild: 'prompt:build'
+  PromptBuild: 'prompt:build',
+  NotifFilterList: 'notif-filter:list',
+  NotifFilterAdd: 'notif-filter:add',
+  NotifFilterUpdate: 'notif-filter:update',
+  NotifFilterRemove: 'notif-filter:remove',
+  NotifFilterReorder: 'notif-filter:reorder',
+  /** main → renderer: the filter rules changed. */
+  NotifFilterChanged: 'notif-filter:changed',
+  NotifLogList: 'notif-log:list',
+  NotifLogClear: 'notif-log:clear',
+  /** main → renderer: a notification was received (the log grew). */
+  NotifLogChanged: 'notif-log:changed',
+  NotifStatus: 'notif:status',
+  SettingGet: 'setting:get',
+  SettingSet: 'setting:set'
 } as const
+
+export type NotifFilterResult =
+  | { ok: true; filter: NotificationFilter }
+  | { ok: false; error: string }
+export type OkResult = { ok: true } | { ok: false; error: string }
+
+/** State of the desktop-notification monitor, for the notifications view. */
+export interface NotificationStatus {
+  enabled: boolean
+  running: boolean
+  defaultAction: FilterAction
+}
 
 /** Outcome of a task-box write; errors are user-facing messages. */
 export type TaskResult = { ok: true; task: Task } | { ok: false; error: string }

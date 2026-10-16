@@ -18,6 +18,9 @@ import {
   TabActivityEvent,
   TabCwdEvent,
   TabProcessEvent,
+  NotifFilterResult,
+  NotificationStatus,
+  OkResult,
   RepoSetResult,
   RunStartResult,
   TaskRemoveResult,
@@ -26,6 +29,11 @@ import {
 } from '../shared/ipc'
 import { NewTask, Task, TaskFilter, TaskPatch } from '../shared/tasks'
 import { Delivery, RepoDefaults, Run, RunOptions } from '../shared/runs'
+import {
+  NotificationFilter,
+  NotificationFilterInput,
+  NotificationLogEntry
+} from '../shared/notifications'
 
 function subscribe<T>(channel: string, callback: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T): void => callback(payload)
@@ -129,7 +137,26 @@ const api = {
     ipcRenderer.invoke(IPC.RepoSet, defaults),
   /** The default initial prompt for a task under the given delivery. */
   promptBuild: (taskId: number, delivery: Delivery, pushBranch: string | null): Promise<string> =>
-    ipcRenderer.invoke(IPC.PromptBuild, taskId, delivery, pushBranch)
+    ipcRenderer.invoke(IPC.PromptBuild, taskId, delivery, pushBranch),
+
+  notifFilterList: (): Promise<NotificationFilter[]> => ipcRenderer.invoke(IPC.NotifFilterList),
+  notifFilterAdd: (input: NotificationFilterInput): Promise<NotifFilterResult> =>
+    ipcRenderer.invoke(IPC.NotifFilterAdd, input),
+  notifFilterUpdate: (id: number, input: NotificationFilterInput): Promise<NotifFilterResult> =>
+    ipcRenderer.invoke(IPC.NotifFilterUpdate, id, input),
+  notifFilterRemove: (id: number): Promise<OkResult> => ipcRenderer.invoke(IPC.NotifFilterRemove, id),
+  notifFilterReorder: (ids: number[]): Promise<OkResult> =>
+    ipcRenderer.invoke(IPC.NotifFilterReorder, ids),
+  onNotifFilterChanged: (cb: () => void): (() => void) =>
+    subscribe<void>(IPC.NotifFilterChanged, cb),
+  notifLogList: (limit?: number): Promise<NotificationLogEntry[]> =>
+    ipcRenderer.invoke(IPC.NotifLogList, limit),
+  notifLogClear: (): Promise<OkResult> => ipcRenderer.invoke(IPC.NotifLogClear),
+  onNotifLogChanged: (cb: () => void): (() => void) => subscribe<void>(IPC.NotifLogChanged, cb),
+  notifStatus: (): Promise<NotificationStatus> => ipcRenderer.invoke(IPC.NotifStatus),
+  settingGet: (key: string): Promise<string | null> => ipcRenderer.invoke(IPC.SettingGet, key),
+  settingSet: (key: string, value: string): Promise<OkResult> =>
+    ipcRenderer.invoke(IPC.SettingSet, key, value)
 }
 
 export type SokkingApi = typeof api

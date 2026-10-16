@@ -33,9 +33,19 @@ import { RunError, RunRepository } from '../core/runs'
 import { RepoError, RepoRepository } from '../core/repos'
 import { buildPrompt } from '../core/prompt'
 import { ControlServer } from '../core/control-server'
+import { SettingsRepository } from '../core/settings'
+import { FilterError, NotificationFilterRepository } from '../core/notification-filters'
+import { NotificationLogRepository } from '../core/notification-log'
+import { NotificationMonitor } from '../core/notification-monitor'
+import { NotificationSource } from '../core/notification-source'
 import { RunCoordinator } from './run-coordinator'
 import { NewTask, TaskFilter, TaskPatch, TaskStatus, TASK_STATUSES } from '../shared/tasks'
 import { Delivery, RepoDefaults, RunOptions } from '../shared/runs'
+import {
+  NotificationFilterInput,
+  SETTING_NOTIFICATION_MONITOR_ENABLED
+} from '../shared/notifications'
+import type { NotificationStatus } from '../shared/ipc'
 import appIcon from '../../resources/icon.png?asset'
 
 let mainWindow: BrowserWindow | null = null
@@ -87,6 +97,48 @@ const controlServer = new ControlServer(path.join(app.getPath('userData'), 'cont
 tasks.onChange(() => mainWindow?.webContents.send(IPC.TaskChanged))
 runs.onChange(() => mainWindow?.webContents.send(IPC.RunChanged))
 ptyManager.onExit((tabId) => runCoordinator.handleTabClosed(tabId))
+
+// Desktop-notification intake: the bus monitor feeds the filter rules,
+// accepted notifications land in the task box, every one goes in the log.
+const settings = new SettingsRepository(db)
+const notifFilters = new NotificationFilterRepository(db)
+const notifLog = new NotificationLogRepository(db)
+const notifSource = new NotificationSource(notifFilters, notifLog, settings, tasks)
+const notifMonitor = new NotificationMonitor(
+  (n) => notifSource.handle(n),
+  (message) => console.warn('[sokking] notification monitor:', message)
+)
+notifFilters.onChange(() => mainWindow?.webContents.send(IPC.NotifFilterChanged))
+notifLog.onChange(() => mainWindow?.webContents.send(IPC.NotifLogChanged))
+
+/** The log is pruned on start and daily; the cap keeps the view snappy. */
+const NOTIF_LOG_KEEP = { keepDays: 14, keepCount: 2000 }
+
+function notificationMonitorEnabled(): boolean {
+  return settings.getOr(SETTING_NOTIFICATION_MONITOR_ENABLED, 'true') !== 'false'
+}
+
+function syncNotificationMonitor(): void {
+  if (notificationMonitorEnabled()) {
+    if (!notifMonitor.running) notifMonitor.start()
+  } else {
+    notifMonitor.stop()
+  }
+}
+
+function notificationStatus(): NotificationStatus {
+  return {
+    enabled: notificationMonitorEnabled(),
+    running: notifMonitor.running,
+    defaultAction: notifSource.defaultAction()
+  }
+}
+
+/** Turns a domain error into a renderer-facing failure; anything else propagates. */
+function domainErrorMessage(e: unknown): string {
+  if (e instanceof FilterError) return e.message
+  return taskErrorMessage(e)
+}
 
 // Hook events feed both the tab status / notifications and the run's lifecycle.
 const hookServer = new HookServer(socketPath, (event) => {
@@ -279,6 +331,47 @@ function registerIpcHandlers(): void {
       return task ? buildPrompt(task, { delivery, pushBranch }) : ''
     }
   )
+
+  // Desktop-notification intake: rules, log, monitor state, settings.
+  ipcMain.handle(IPC.NotifFilterList, () => notifFilters.list())
+  ipcMain.handle(IPC.NotifFilterAdd, (_e, input: NotificationFilterInput) => {
+    try {
+      return { ok: true, filter: notifFilters.add(input) }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.NotifFilterUpdate, (_e, id: number, input: NotificationFilterInput) => {
+    try {
+      return { ok: true, filter: notifFilters.update(id, input) }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.NotifFilterRemove, (_e, id: number) => {
+    try {
+      notifFilters.remove(id)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: domainErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(IPC.NotifFilterReorder, (_e, ids: number[]) => {
+    notifFilters.reorder(ids)
+    return { ok: true }
+  })
+  ipcMain.handle(IPC.NotifLogList, (_e, limit?: number) => notifLog.list(limit))
+  ipcMain.handle(IPC.NotifLogClear, () => {
+    notifLog.clear()
+    return { ok: true }
+  })
+  ipcMain.handle(IPC.NotifStatus, () => notificationStatus())
+  ipcMain.handle(IPC.SettingGet, (_e, key: string) => settings.get(key))
+  ipcMain.handle(IPC.SettingSet, (_e, key: string, value: string) => {
+    settings.set(key, value)
+    if (key === SETTING_NOTIFICATION_MONITOR_ENABLED) syncNotificationMonitor()
+    return { ok: true }
+  })
 
   // Directory listing for the files panel.
   ipcMain.handle(IPC.FsList, async (_e, dir: string): Promise<FsListResult> => {
@@ -524,6 +617,9 @@ app.whenReady().then(() => {
   // Runs don't survive the process: whatever was open belongs to the last run of the app.
   runCoordinator.recoverAfterRestart()
   controlServer.start()
+  notifLog.prune(NOTIF_LOG_KEEP)
+  setInterval(() => notifLog.prune(NOTIF_LOG_KEEP), 24 * 3600_000)
+  syncNotificationMonitor()
   cleanupStaleHookSockets(app.getPath('userData'))
   hookServer.start()
   cwdTracker.start()
@@ -559,5 +655,6 @@ app.on('before-quit', () => {
   ptyManager.disposeAll()
   hookServer.stop()
   controlServer.stop()
+  notifMonitor.stop()
   db.close()
 })

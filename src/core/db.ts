@@ -50,6 +50,38 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX run_task ON run(task_id, id);
   CREATE INDEX run_open ON run(finished_at) WHERE finished_at IS NULL;
+  `,
+  `
+  CREATE TABLE setting (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE notification_filter (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    "order"         INTEGER NOT NULL,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    app_pattern     TEXT NOT NULL DEFAULT '',
+    title_pattern   TEXT NOT NULL DEFAULT '',
+    body_pattern    TEXT NOT NULL DEFAULT '',
+    action          TEXT NOT NULL,
+    workdir         TEXT,
+    prompt_template TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+  );
+  CREATE TABLE notification_log (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    app               TEXT NOT NULL,
+    title             TEXT NOT NULL,
+    body              TEXT NOT NULL,
+    received_at       TEXT NOT NULL,
+    matched_filter_id INTEGER,
+    result            TEXT NOT NULL,
+    task_id           INTEGER
+  );
+  CREATE INDEX notification_log_received ON notification_log(received_at);
   `
 ]
 

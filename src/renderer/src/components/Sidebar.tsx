@@ -4,12 +4,14 @@ import { useBookmarksStore } from '../stores/bookmarks'
 import { useNotificationsStore } from '../stores/notifications'
 import { formatBinding, useKeybindingsStore } from '../stores/keybindings'
 import { selectInboxCount, useTasksStore } from '../stores/tasks'
+import { useIntakeStore } from '../stores/notification-intake'
 import { closeTab } from '../tab-actions'
 
 interface SidebarProps {
   /** Which main view is showing — highlights the matching nav entry. */
-  view: 'tabs' | 'taskbox'
+  view: 'tabs' | 'taskbox' | 'notifications'
   onShowTaskBox: () => void
+  onShowNotifications: () => void
   /** A session tab was clicked: the main area should show the tabs view. */
   onTabSelected: () => void
   onOpenSettings: () => void
@@ -33,6 +35,7 @@ function loadWidth(): number {
 export function Sidebar({
   view,
   onShowTaskBox,
+  onShowNotifications,
   onTabSelected,
   onOpenSettings,
   onOpenBookmarks,
@@ -45,6 +48,7 @@ export function Sidebar({
   const bookmarksCombo = useKeybindingsStore((s) => formatBinding(s.bindings.openBookmarks))
   const unreadNotifs = useNotificationsStore((s) => s.unread)
   const inboxCount = useTasksStore(selectInboxCount)
+  const unseenNotifs = useIntakeStore((s) => s.unseen)
   const [width, setWidth] = useState(loadWidth)
   // Width changes animate (the workspace collapse) — except while dragging
   // the resizer, where the transition would rubber-band behind the cursor.
@@ -104,6 +108,20 @@ export function Sidebar({
               <span className="sidebar-nav-badge">{inboxCount}</span>
             ))}
         </button>
+        <button
+          className={`sidebar-nav-item${view === 'notifications' ? ' active' : ''}`}
+          onClick={onShowNotifications}
+          title="通知: デスクトップ通知の受信ログとフィルタルール"
+        >
+          <span className="sidebar-nav-icon">◎</span>
+          {!collapsed && <span className="sidebar-nav-label">通知</span>}
+          {unseenNotifs > 0 &&
+            (collapsed ? (
+              <span className="unread-dot" />
+            ) : (
+              <span className="sidebar-nav-badge dim">{unseenNotifs}</span>
+            ))}
+        </button>
       </div>
       <div className="sidebar-tabs">
         {tabs.map((tab) => (
@@ -137,9 +155,9 @@ export function Sidebar({
         <button
           className="sidebar-button"
           onClick={onOpenNotifications}
-          title="通知一覧（全タブ共通）"
+          title="Claude Code の通知一覧（全タブ共通）"
         >
-          ⚑{!collapsed && ' 通知'}
+          ⚑{!collapsed && ' Claude 通知'}
           {unreadNotifs > 0 &&
             (collapsed ? (
               <span className="unread-dot" />
