@@ -124,9 +124,16 @@ async function main() {
         break
       }
       case 'key': {
+        // Named keys need their virtual key code for the page to see them
+        // as that key (xterm reads keyCode / key); a printable character
+        // goes through as text.
         const key = args[0]
-        await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: key === 'Enter' ? 13 : 0 })
-        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: key === 'Enter' ? 13 : 0 })
+        const codes = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 }
+        const vk = codes[key]
+        const base = vk ? { key, code: key, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk } : { key, text: key, unmodifiedText: key }
+        await cdp.send('Input.dispatchKeyEvent', { type: vk ? 'rawKeyDown' : 'keyDown', ...base })
+        if (vk === 13) await cdp.send('Input.dispatchKeyEvent', { type: 'char', key, text: '\r', unmodifiedText: '\r', windowsVirtualKeyCode: 13 })
+        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base })
         await sleep(100)
         console.log('key', key)
         break
@@ -136,8 +143,45 @@ async function main() {
         console.log(typeof value === 'string' ? value : JSON.stringify(value, null, 2))
         break
       }
+      case 'reload': {
+        // Reload the renderer and report what it logged as errors while
+        // coming up (a blank window usually means a React render error).
+        const errors = []
+        cdp.ws.addEventListener('message', (ev) => {
+          const msg = JSON.parse(ev.data)
+          if (msg.method === 'Runtime.exceptionThrown') {
+            const d = msg.params.exceptionDetails
+            errors.push(d.exception?.description || d.text)
+          } else if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
+            errors.push(msg.params.args.map((a) => a.value ?? a.description ?? '').join(' '))
+          }
+        })
+        await cdp.send('Runtime.enable')
+        await cdp.send('Page.enable')
+        await cdp.send('Page.reload')
+        await sleep(Number(args[0] || 3000))
+        console.log(errors.length ? errors.join('\n---\n') : 'reloaded, no errors')
+        break
+      }
+      case 'errors': {
+        // Watch the page for errors for a while (default 3 s).
+        const errors = []
+        cdp.ws.addEventListener('message', (ev) => {
+          const msg = JSON.parse(ev.data)
+          if (msg.method === 'Runtime.exceptionThrown') {
+            const d = msg.params.exceptionDetails
+            errors.push(d.exception?.description || d.text)
+          } else if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
+            errors.push(msg.params.args.map((a) => a.value ?? a.description ?? '').join(' '))
+          }
+        })
+        await cdp.send('Runtime.enable')
+        await sleep(Number(args[0] || 3000))
+        console.log(errors.length ? errors.join('\n---\n') : 'no errors')
+        break
+      }
       default:
-        console.error('usage: ui-probe.js shot|click|type|key|eval ...')
+        console.error('usage: ui-probe.js shot|click|type|key|eval|reload|errors ...')
         process.exit(2)
     }
   } finally {

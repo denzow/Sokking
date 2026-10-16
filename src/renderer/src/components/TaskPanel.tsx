@@ -3,13 +3,15 @@ import type { Task, TaskStatus } from '../../../shared/tasks'
 import type { Run } from '../../../shared/runs'
 import type { Tab } from '../stores/tabs'
 import { useTasksStore } from '../stores/tasks'
-import { latestRun, useRunsStore } from '../stores/runs'
+import { useRunsStore } from '../stores/runs'
 
 interface TaskPanelProps {
   tab: Tab
   /** Relaunch Claude Code for the task (opens the launch dialog). */
   onRelaunch: (task: Task) => void
 }
+
+const NO_RUNS: Run[] = []
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   inbox: '受信箱',
@@ -43,7 +45,8 @@ function runLabel(run: Run): string {
 export function TaskPanel({ tab, onRelaunch }: TaskPanelProps): React.JSX.Element {
   const task = useTasksStore((s) => s.tasks.find((t) => t.id === tab.taskId) ?? null)
   const setStatus = useTasksStore((s) => s.setStatus)
-  const runs = useRunsStore((s) => (tab.taskId === null ? [] : (s.byTask[tab.taskId] ?? [])))
+  // A stable empty array: a selector returning a fresh [] would re-render forever.
+  const runs = useRunsStore((s) => (tab.taskId === null ? NO_RUNS : (s.byTask[tab.taskId] ?? NO_RUNS)))
   const load = useRunsStore((s) => s.load)
   const [showPrompt, setShowPrompt] = useState(false)
 
@@ -54,7 +57,7 @@ export function TaskPanel({ tab, onRelaunch }: TaskPanelProps): React.JSX.Elemen
   if (!task) {
     return <div className="task-panel task-panel-empty">タスクが見つかりません(削除された可能性があります)</div>
   }
-  const run = latestRun(useRunsStore.getState().byTask, task.id) ?? runs[0] ?? null
+  const run = runs[0] ?? null
 
   return (
     <div className="task-panel">
