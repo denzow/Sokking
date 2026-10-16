@@ -33,7 +33,8 @@ process.stdin.on('end', () => {
     tabId,
     hookEventName: payload.hook_event_name || 'unknown',
     notificationType: payload.notification_type || '',
-    message: payload.message || payload.last_assistant_message || ''
+    message: payload.message || payload.last_assistant_message || '',
+    sessionId: payload.session_id || ''
   })
 
   const conn = net.createConnection(socketPath, () => {

@@ -2525,3 +2525,250 @@ textarea {
 .task-detail-spacer {
   flex: 1;
 }
+
+/* ---------- launch dialog ---------- */
+
+.start-run-modal {
+  width: 720px;
+}
+
+.start-run-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 75vh;
+}
+
+.start-run-row {
+  display: flex;
+  gap: 10px;
+}
+
+.start-run-row .start-run-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.start-run-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.start-run-field > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.start-run-field input,
+.start-run-field select,
+.start-run-field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 6px;
+  font-size: 13px;
+  width: 100%;
+  resize: vertical;
+}
+
+.start-run-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+}
+
+.start-run-link:hover {
+  text-decoration: underline;
+}
+
+.start-run-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.start-run-hint {
+  color: var(--text-dim);
+}
+
+.start-run-error {
+  color: var(--red);
+}
+
+.start-run-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.start-run-footer button,
+.task-panel-actions button {
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.start-run-footer button:hover:not(:disabled),
+.task-panel-actions button:hover:not(:disabled) {
+  border-color: var(--text-dim);
+}
+
+.start-run-footer button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.start-run-footer button.primary,
+.task-panel-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* ---------- task panel (inside a processing tab) ---------- */
+
+.task-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-alt);
+}
+
+.task-panel-empty {
+  padding: 24px;
+  color: var(--text-dim);
+}
+
+.task-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.task-panel-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.task-panel-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-panel-id {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.task-panel-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.task-panel-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+.task-panel-ref {
+  color: var(--accent);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.task-panel-body,
+.task-panel-prompt {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  color: var(--text);
+}
+
+.task-panel-prompt {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  font-size: 11px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.task-panel-side {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.task-panel-section-title {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.task-panel-run {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  font-size: 12px;
+}
+
+.task-panel-run dt {
+  color: var(--text-dim);
+}
+
+.task-panel-run dd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-panel-run a {
+  color: var(--accent);
+}
+
+.task-panel-session {
+  font-size: 11px;
+}
+
+.task-panel-hint {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.task-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}

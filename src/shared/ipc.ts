@@ -1,6 +1,7 @@
 // IPC channel names and payload types shared across main / preload / renderer.
 
 import type { Task } from './tasks'
+import type { RepoDefaults, Run } from './runs'
 
 export const IPC = {
   PtyCreate: 'pty:create',
@@ -44,12 +45,21 @@ export const IPC = {
   TaskUpdate: 'task:update',
   TaskRemove: 'task:remove',
   /** main → renderer: the task box changed (any writer); re-fetch. */
-  TaskChanged: 'task:changed'
+  TaskChanged: 'task:changed',
+  RunStart: 'run:start',
+  RunListForTask: 'run:list-for-task',
+  /** main → renderer: a run changed (started, session id, PR, finished). */
+  RunChanged: 'run:changed',
+  RepoResolve: 'repo:resolve',
+  RepoSet: 'repo:set',
+  PromptBuild: 'prompt:build'
 } as const
 
 /** Outcome of a task-box write; errors are user-facing messages. */
 export type TaskResult = { ok: true; task: Task } | { ok: false; error: string }
 export type TaskRemoveResult = { ok: true } | { ok: false; error: string }
+export type RunStartResult = { ok: true; run: Run } | { ok: false; error: string }
+export type RepoSetResult = { ok: true; repo: RepoDefaults } | { ok: false; error: string }
 
 export interface PtyCreateRequest {
   tabId: string

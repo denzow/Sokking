@@ -22,6 +22,34 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX task_status ON task(status, created_at);
   CREATE INDEX task_source_ref ON task(source_ref);
+  `,
+  `
+  CREATE TABLE repo (
+    workdir                 TEXT PRIMARY KEY,
+    default_delivery        TEXT NOT NULL DEFAULT 'pr',
+    default_push_branch     TEXT,
+    default_permission_mode TEXT NOT NULL DEFAULT 'acceptEdits',
+    updated_at              TEXT NOT NULL
+  );
+  CREATE TABLE run (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id         INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+    tab_id          TEXT NOT NULL,
+    mode            TEXT NOT NULL,
+    permission_mode TEXT NOT NULL,
+    delivery        TEXT NOT NULL,
+    push_branch     TEXT,
+    workdir         TEXT NOT NULL,
+    prompt          TEXT NOT NULL,
+    session_id      TEXT,
+    branch          TEXT,
+    pr_url          TEXT,
+    started_at      TEXT NOT NULL,
+    finished_at     TEXT,
+    result          TEXT
+  );
+  CREATE INDEX run_task ON run(task_id, id);
+  CREATE INDEX run_open ON run(finished_at) WHERE finished_at IS NULL;
   `
 ]
 

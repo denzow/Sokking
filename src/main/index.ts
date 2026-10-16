@@ -29,8 +29,13 @@ import { HookInstaller } from './hook-installer'
 import { Notifier } from './notifier'
 import { openDatabase } from '../core/db'
 import { TaskError, TaskRepository } from '../core/tasks'
+import { RunError, RunRepository } from '../core/runs'
+import { RepoError, RepoRepository } from '../core/repos'
+import { buildPrompt } from '../core/prompt'
 import { ControlServer } from '../core/control-server'
+import { RunCoordinator } from './run-coordinator'
 import { NewTask, TaskFilter, TaskPatch, TaskStatus, TASK_STATUSES } from '../shared/tasks'
+import { Delivery, RepoDefaults, RunOptions } from '../shared/runs'
 import appIcon from '../../resources/icon.png?asset'
 
 let mainWindow: BrowserWindow | null = null
@@ -62,7 +67,6 @@ const notifier = new Notifier(
     return path.basename(root ?? cwd)
   }
 )
-const hookServer = new HookServer(socketPath, (event) => notifier.handleHookEvent(event))
 const hookInstaller = new HookInstaller()
 
 // The task box and everything else that outlives a window: SQLite under
@@ -71,8 +75,24 @@ const hookInstaller = new HookInstaller()
 // it without knowing our pid; dev instances live in their own userData.
 const db = openDatabase(path.join(app.getPath('userData'), 'sokking.db'))
 const tasks = new TaskRepository(db)
+const runs = new RunRepository(db)
+const repos = new RepoRepository(db)
+const runCoordinator = new RunCoordinator(
+  tasks,
+  runs,
+  ptyManager,
+  path.join(app.getPath('userData'), 'prompts')
+)
 const controlServer = new ControlServer(path.join(app.getPath('userData'), 'control.sock'))
 tasks.onChange(() => mainWindow?.webContents.send(IPC.TaskChanged))
+runs.onChange(() => mainWindow?.webContents.send(IPC.RunChanged))
+ptyManager.onExit((tabId) => runCoordinator.handleTabClosed(tabId))
+
+// Hook events feed both the tab status / notifications and the run's lifecycle.
+const hookServer = new HookServer(socketPath, (event) => {
+  notifier.handleHookEvent(event)
+  runCoordinator.handleHookEvent(event)
+})
 
 function registerControlHandlers(): void {
   controlServer.handle('ping', () => ({ ok: true }))
@@ -96,9 +116,9 @@ function registerControlHandlers(): void {
   })
 }
 
-/** Turns a TaskError into a renderer-facing failure; anything else propagates. */
+/** Turns a domain error into a renderer-facing failure; anything else propagates. */
 function taskErrorMessage(e: unknown): string {
-  if (e instanceof TaskError) return e.message
+  if (e instanceof TaskError || e instanceof RunError || e instanceof RepoError) return e.message
   throw e
 }
 
@@ -201,6 +221,7 @@ function registerIpcHandlers(): void {
   })
   ipcMain.on(IPC.PtyDispose, (_e, payload: { tabId: string }) => {
     ptyManager.dispose(payload.tabId)
+    runCoordinator.handleTabClosed(payload.tabId)
   })
 
   ipcMain.handle(IPC.HotkeySet, (_e, accelerator: string | null) => registerHotkey(accelerator))
@@ -230,6 +251,34 @@ function registerIpcHandlers(): void {
       return { ok: false, error: taskErrorMessage(e) }
     }
   })
+
+  // Processing runs and the per-repository defaults of the launch dialog.
+  ipcMain.handle(
+    IPC.RunStart,
+    async (_e, taskId: number, tabId: string, options: RunOptions) => {
+      try {
+        return { ok: true, run: await runCoordinator.start(taskId, tabId, options) }
+      } catch (e) {
+        return { ok: false, error: taskErrorMessage(e) }
+      }
+    }
+  )
+  ipcMain.handle(IPC.RunListForTask, (_e, taskId: number) => runs.listForTask(taskId))
+  ipcMain.handle(IPC.RepoResolve, (_e, workdir: string) => repos.resolve(workdir))
+  ipcMain.handle(IPC.RepoSet, (_e, defaults: RepoDefaults) => {
+    try {
+      return { ok: true, repo: repos.set(defaults) }
+    } catch (e) {
+      return { ok: false, error: taskErrorMessage(e) }
+    }
+  })
+  ipcMain.handle(
+    IPC.PromptBuild,
+    (_e, taskId: number, delivery: Delivery, pushBranch: string | null): string => {
+      const task = tasks.get(taskId)
+      return task ? buildPrompt(task, { delivery, pushBranch }) : ''
+    }
+  )
 
   // Directory listing for the files panel.
   ipcMain.handle(IPC.FsList, async (_e, dir: string): Promise<FsListResult> => {
@@ -472,6 +521,8 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   registerIpcHandlers()
   registerControlHandlers()
+  // Runs don't survive the process: whatever was open belongs to the last run of the app.
+  runCoordinator.recoverAfterRestart()
   controlServer.start()
   cleanupStaleHookSockets(app.getPath('userData'))
   hookServer.start()

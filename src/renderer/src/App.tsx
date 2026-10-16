@@ -26,7 +26,10 @@ import { openFileInEditor, useEditorStore } from './stores/editor'
 import { openFile } from './stores/file-openers'
 import { useNotificationsStore } from './stores/notifications'
 import { useTasksStore } from './stores/tasks'
+import { useRunsStore } from './stores/runs'
 import { TaskBox } from './components/TaskBox'
+import { TaskPanel } from './components/TaskPanel'
+import { StartRunModal } from './components/StartRunModal'
 import { closeTab } from './tab-actions'
 import type { Task } from '../../shared/tasks'
 import {
@@ -37,16 +40,21 @@ import {
 } from './stores/keybindings'
 import { loadSession, saveSession } from './stores/session'
 
-type MainPanel = 'terminal' | 'git' | 'workspace' | 'diff' | 'log'
+type MainPanel = 'terminal' | 'task' | 'git' | 'workspace' | 'diff' | 'log'
 
 /** What the main area shows: the active session tab's panels, or the task box. */
 type MainView = 'tabs' | 'taskbox'
 
-/** Main-area panels in left-to-right order for Ctrl+←/→ switching; the Git
-    panels only exist when the active tab's cwd is a repository, and the
-    workspace (file tree + editor + search) sits to their right. */
-function panelOrder(isRepo: boolean): MainPanel[] {
-  return isRepo ? ['terminal', 'diff', 'git', 'log', 'workspace'] : ['terminal', 'workspace']
+/** Main-area panels in left-to-right order for Ctrl+←/→ switching; the task
+    panel exists only on a processing tab, the Git panels only when the
+    active tab's cwd is a repository, and the workspace (file tree + editor
+    + search) sits to their right. */
+function panelOrder(isRepo: boolean, hasTask: boolean): MainPanel[] {
+  const order: MainPanel[] = ['terminal']
+  if (hasTask) order.push('task')
+  if (isRepo) order.push('diff', 'git', 'log')
+  order.push('workspace')
+  return order
 }
 
 export default function App(): React.JSX.Element {
@@ -54,6 +62,8 @@ export default function App(): React.JSX.Element {
   const activeTabId = useTabsStore((s) => s.activeTabId)
   const [panel, setPanel] = useState<MainPanel>('terminal')
   const [view, setView] = useState<MainView>('tabs')
+  /** Task whose launch dialog is open, if any. */
+  const [runModalTask, setRunModalTask] = useState<Task | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bookmarksOpen, setBookmarksOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -71,6 +81,8 @@ export default function App(): React.JSX.Element {
   // Keep the latest isRepo / panel readable from the once-registered key handler.
   const isRepoRef = useRef(false)
   isRepoRef.current = gitInfo.isRepo
+  const hasTaskRef = useRef(false)
+  hasTaskRef.current = activeTab?.taskId !== null && activeTab?.taskId !== undefined
   const panelRef = useRef<MainPanel>('terminal')
   panelRef.current = panel
   const activeTabIdRef = useRef<string | null>(null)
@@ -129,21 +141,19 @@ export default function App(): React.JSX.Element {
     })()
   }, [])
 
-  // Open the processing tab for a task (or jump to the one already open):
-  // a shell in the task's workdir, titled after the task. The task moves to
-  // "running" while its tab exists.
+  // "Open in a tab" from the task box: jump to the task's tab when it has
+  // one, otherwise go through the launch dialog (it opens the tab and starts
+  // Claude Code in it).
   const openTaskInTab = useCallback((task: Task): void => {
-    if (!task.workdir) return
     const store = useTabsStore.getState()
     const existing = store.tabs.find((t) => t.taskId === task.id)
     if (existing) {
       store.activateTab(existing.id)
-    } else {
-      store.addTab(task.workdir, { title: task.title, taskId: task.id })
-      if (task.status !== 'running') void useTasksStore.getState().setStatus(task.id, 'running')
+      setView('tabs')
+      setPanel('terminal')
+      return
     }
-    setView('tabs')
-    setPanel('terminal')
+    setRunModalTask(task)
   }, [])
 
   // Global IPC listeners (registered once).
@@ -171,6 +181,9 @@ export default function App(): React.JSX.Element {
     void useTasksStore.getState().refresh()
     const unsubTasks = window.sokking.onTaskChanged(() => {
       void useTasksStore.getState().refresh()
+    })
+    const unsubRuns = window.sokking.onRunChanged(() => {
+      void useRunsStore.getState().refreshAll()
     })
     // Files-panel context menu 「エディタで開く」. The helper reads in the
     // renderer (not main) so binaries still fall back to the external app
@@ -212,6 +225,7 @@ export default function App(): React.JSX.Element {
       unsubExit()
       unsubNotification()
       unsubTasks()
+      unsubRuns()
       unsubOpenInEditor()
       unsubPersist()
       window.removeEventListener('focus', onFocus)
@@ -270,7 +284,7 @@ export default function App(): React.JSX.Element {
         }
         case 'panelLeft':
         case 'panelRight': {
-          const order = panelOrder(isRepoRef.current)
+          const order = panelOrder(isRepoRef.current, hasTaskRef.current)
           const index = order.indexOf(panelRef.current)
           const next = index + (action === 'panelLeft' ? -1 : 1)
           if (next < 0 || next >= order.length) break
@@ -473,6 +487,15 @@ export default function App(): React.JSX.Element {
           >
             terminal
           </button>
+          {activeTab?.taskId !== null && activeTab?.taskId !== undefined && (
+            <button
+              className={`view-tab${panel === 'task' ? ' active' : ''}`}
+              onClick={() => setPanel('task')}
+              title="task パネル: このタブが処理しているタスク (Ctrl+←/→)"
+            >
+              task
+            </button>
+          )}
           {gitInfo.isRepo && (
             <>
               <button
@@ -545,6 +568,9 @@ export default function App(): React.JSX.Element {
             )}
           </div>
           {view === 'taskbox' && <TaskBox onOpenInTab={openTaskInTab} />}
+          {view === 'tabs' && panel === 'task' && activeTab && (
+            <TaskPanel key={activeTab.id} tab={activeTab} onRelaunch={setRunModalTask} />
+          )}
           {view === 'tabs' && panel === 'git' && activeTab && <GitControlPanel tab={activeTab} />}
           {view === 'tabs' && panel === 'workspace' && activeTab && (
             // Keyed by tab: the side pane's saved state is per tab, and
@@ -564,6 +590,17 @@ export default function App(): React.JSX.Element {
             useTabsStore.getState().activateTab(tabId)
             setView('tabs')
             setTabSearchOpen(false)
+          }}
+        />
+      )}
+      {runModalTask && (
+        <StartRunModal
+          task={runModalTask}
+          onClose={() => setRunModalTask(null)}
+          onStarted={() => {
+            setRunModalTask(null)
+            setView('tabs')
+            setPanel('terminal')
           }}
         />
       )}

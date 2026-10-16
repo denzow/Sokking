@@ -7,6 +7,8 @@ export interface HookEvent {
   hookEventName: string
   notificationType?: string
   message?: string
+  /** Claude Code session id (every event carries it). */
+  sessionId?: string
 }
 
 /**

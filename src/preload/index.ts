@@ -18,11 +18,14 @@ import {
   TabActivityEvent,
   TabCwdEvent,
   TabProcessEvent,
+  RepoSetResult,
+  RunStartResult,
   TaskRemoveResult,
   TaskResult,
   WorkspaceSearchResult
 } from '../shared/ipc'
 import { NewTask, Task, TaskFilter, TaskPatch } from '../shared/tasks'
+import { Delivery, RepoDefaults, Run, RunOptions } from '../shared/runs'
 
 function subscribe<T>(channel: string, callback: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T): void => callback(payload)
@@ -111,7 +114,22 @@ const api = {
     ipcRenderer.invoke(IPC.TaskUpdate, id, patch),
   taskRemove: (id: number): Promise<TaskRemoveResult> => ipcRenderer.invoke(IPC.TaskRemove, id),
   /** The task box changed (UI, CLI, or a background source wrote to it). */
-  onTaskChanged: (cb: () => void): (() => void) => subscribe<void>(IPC.TaskChanged, cb)
+  onTaskChanged: (cb: () => void): (() => void) => subscribe<void>(IPC.TaskChanged, cb),
+
+  /** Launch Claude Code for the task in the tab's shell. */
+  runStart: (taskId: number, tabId: string, options: RunOptions): Promise<RunStartResult> =>
+    ipcRenderer.invoke(IPC.RunStart, taskId, tabId, options),
+  runListForTask: (taskId: number): Promise<Run[]> =>
+    ipcRenderer.invoke(IPC.RunListForTask, taskId),
+  onRunChanged: (cb: () => void): (() => void) => subscribe<void>(IPC.RunChanged, cb),
+  /** Launch-dialog defaults for a directory (built-in ones when unconfigured). */
+  repoResolve: (workdir: string): Promise<RepoDefaults> =>
+    ipcRenderer.invoke(IPC.RepoResolve, workdir),
+  repoSet: (defaults: RepoDefaults): Promise<RepoSetResult> =>
+    ipcRenderer.invoke(IPC.RepoSet, defaults),
+  /** The default initial prompt for a task under the given delivery. */
+  promptBuild: (taskId: number, delivery: Delivery, pushBranch: string | null): Promise<string> =>
+    ipcRenderer.invoke(IPC.PromptBuild, taskId, delivery, pushBranch)
 }
 
 export type SokkingApi = typeof api

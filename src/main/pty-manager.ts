@@ -16,6 +16,7 @@ export function defaultShell(): string {
 
 export class PtyManager {
   private sessions = new Map<string, PtySession>()
+  private exitListeners = new Set<(tabId: string) => void>()
 
   constructor(
     private getWebContents: () => WebContents | null,
@@ -56,6 +57,7 @@ export class PtyManager {
       this.sessions.delete(tabId)
       const payload: PtyExitEvent = { tabId, exitCode }
       this.getWebContents()?.send(IPC.PtyExit, payload)
+      for (const listener of this.exitListeners) listener(tabId)
     })
 
     this.sessions.set(tabId, { tabId, proc })
@@ -71,6 +73,30 @@ export class PtyManager {
 
   write(tabId: string, data: string): void {
     this.sessions.get(tabId)?.proc.write(data)
+  }
+
+  has(tabId: string): boolean {
+    return this.sessions.has(tabId)
+  }
+
+  /** Main-side notice that a tab's shell exited (the renderer gets PtyExit). */
+  onExit(listener: (tabId: string) => void): () => void {
+    this.exitListeners.add(listener)
+    return () => this.exitListeners.delete(listener)
+  }
+
+  /**
+   * Resolves once the tab's pty exists. The renderer creates the pty when
+   * the tab's terminal mounts, which can land after a request that wants
+   * to write into it (launching a run right after opening the tab).
+   */
+  async waitFor(tabId: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (!this.sessions.has(tabId)) {
+      if (Date.now() > deadline) return false
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    return true
   }
 
   resize(tabId: string, cols: number, rows: number): void {
